@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live View - VRM Test Client</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Reusing some styles, adding specific grid styles */
+        .app-container {
+            display: grid;
+            grid-template-areas:
+                "header"
+                "main";
+            grid-template-rows: 60px 1fr;
+            grid-template-columns: 1fr;
+            /* Override style.css 3-column layout */
+            height: 100vh;
+        }
+
+        .top-header {
+            grid-area: header;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            background: #1f1f1f;
+            border-bottom: 1px solid #333;
+            z-index: 10;
+        }
+
+        .top-header-brand {
+            font-weight: 600;
+            font-size: 18px;
+            color: #fff;
+        }
+
+        .top-header-brand .badge {
+            font-size: 12px;
+            margin-left: 8px;
+            color: #888;
+        }
+
+        .top-header-nav a {
+            text-decoration: none;
+            color: #a0a0a0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-left: 8px;
+            transition: 0.2s;
+        }
+
+        .top-header-nav a:hover {
+            background-color: #2a2a2a;
+            color: #fff;
+        }
+
+        .top-header-nav a.active {
+            background-color: #383838;
+            color: #fff;
+        }
+
+        .main-content {
+            grid-area: main;
+            padding: 20px;
+            background: #121212;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .live-controls {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+
+        .live-grid {
+            flex-grow: 1;
+            display: grid;
+            gap: 10px;
+            background: #000;
+            border-radius: 8px;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        /* Dynamic Grid Classes */
+        /* Dynamic Grid Classes Removed - Handled by JS */
+
+        .live-cell {
+            background: #1e1e1e;
+            position: relative;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .live-cell video,
+        .live-cell img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .live-cell-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .live-cell:hover .live-cell-overlay {
+            opacity: 1;
+        }
+
+        .live-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #fff;
+            pointer-events: none;
+        }
+
+        /* Modal Styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .modal-content {
+            background: #252525;
+            padding: 24px;
+            border-radius: 8px;
+            width: 400px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #fff;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="top-header">
+            <div class="top-header-brand">
+                <div class="logo">
+                    <!-- Supergate Logo Icon -->
+                    <svg viewBox="0 0 40 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="0" y="4" width="6" height="16" rx="3" fill="#3B82F6" />
+                        <rect x="10" y="4" width="6" height="16" rx="3" fill="#3B82F6" />
+                        <rect x="20" y="4" width="6" height="16" rx="3" fill="#3B82F6" />
+                    </svg>
+                    supergate
+                </div>
+            </div>
+            <nav class="top-header-nav">
+                <a href="/">Dashboard</a>
+                <a href="/tester">Tester</a>
+                <a href="/playlist">Playlist</a>
+                <a href="/live" class="active">Live Grid</a>
+            </nav>
+        </header>
+
+        <main class="main-content">
+            <div class="header-controls">
+                <button id="add-live-btn" class="btn-primary">+ Start New Recording</button>
+                <button id="view-live-btn" class="btn-secondary" style="margin-left: 10px;">+ View Live Stream</button>
+            </div>
+
+            <div id="live-grid" class="live-grid">
+                <!-- Live cells will be added here dynamically -->
+                <div class="empty-state">
+                    <div class="empty-state-icon">📹</div>
+                    <div>No active live streams</div>
+                    <div style="font-size: 12px; margin-top: 8px; color: #666;">Click "+ View Live Stream" to start
+                        watching</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Live Modal -->
+    <div id="add-live-modal" class="modal-backdrop">
+        <div class="modal-content" style="width: 600px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">Start New Recording</div>
+
+            <div class="form-section">
+                <h3>Stream Configuration</h3>
+                <div class="form-group">
+                    <label>Serial Number</label>
+                    <input type="text" id="modal-rec-id" placeholder="Enter Serial Number (e.g. SN-12345)">
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>HQ RTSP URL</label>
+                        <input type="text" id="modal-hq-url" value="rtsp://127.0.0.1:8554/stream1">
+                    </div>
+                    <div class="form-group">
+                        <label>SQ RTSP URL</label>
+                        <input type="text" id="modal-sq-url" value="rtsp://127.0.0.1:8554/stream1_sq">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Storage & Retention</h3>
+                <div class="grid-3">
+                    <div class="form-group">
+                        <label>HQ Limit (MB)</label>
+                        <input type="number" id="modal-hq-storage" placeholder="0 (Unlimited)">
+                    </div>
+                    <div class="form-group">
+                        <label>SQ Limit (MB)</label>
+                        <input type="number" id="modal-sq-storage" placeholder="0 (Unlimited)">
+                    </div>
+                    <div class="form-group">
+                        <label>Retention (Days)</label>
+                        <input type="number" id="modal-retention" value="7">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Advanced Settings (고급 설정)</h3>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Recording Mode (녹화 모드)</label>
+                        <div class="select-wrapper">
+                            <select id="modal-mode">
+                                <option value="EVENT" selected>Event (이벤트 클립용)</option>
+                                <option value="CONTINUOUS">Continuous (상시 녹화)</option>
+                            </select>
+                        </div>
+                        <p style="font-size: 11px; color: #888; margin-top: 4px;">※ Event Clip을 사용하려면 EVENT 모드 필수</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Encoding Codec</label>
+                        <div class="select-wrapper">
+                            <select id="modal-codec">
+                                <option value="COPY" selected>Copy</option>
+                                <option value="H264_SW">H264 SW</option>
+                                <option value="H264_NVENC">H264 NVENC</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Auth Token <span class="optional">(Optional)</span></label>
+                    <input type="text" id="modal-auth" placeholder="Bearer token...">
+                </div>
+
+                <div class="form-group">
+                    <label>Notes <span class="optional">(Optional)</span></label>
+                    <textarea id="modal-notes" rows="2" placeholder="Add session notes..."></textarea>
+                </div>
+            </div>
+            <!-- Modal Actions -->
+            <div class="modal-actions">
+                <button id="modal-cancel-btn" class="btn-secondary">Cancel</button>
+                <button id="modal-start-btn" class="btn-primary">Start Recording</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Live Modal -->
+    <div id="view-live-modal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <h3>View Live Stream</h3>
+
+            <div class="form-group">
+                <label>Recording ID</label>
+                <input type="text" id="view-modal-rec-id" placeholder="Enter Recording ID">
+            </div>
+
+            <div class="form-group">
+                <label>Quality</label>
+                <select id="view-modal-quality">
+                    <option value="hq">High Quality (HQ)</option>
+                    <option value="sq">Standard Quality (SQ)</option>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button id="view-modal-cancel-btn" class="btn-secondary">Cancel</button>
+                <button id="view-modal-confirm-btn" class="btn-primary">View Stream</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Recording List -->
+    <div id="floating-recording-list" class="floating-panel-container">
+        <div class="floating-header" id="floating-header">
+            <h3>Recording List</h3>
+            <div>
+                <button id="refresh-recordings" class="btn-icon" title="Refresh">🔄</button>
+                <button id="toggle-floating" class="btn-icon" title="Minimize/Expand">_</button>
+            </div>
+        </div>
+        <div class="floating-content">
+            <table id="recordings-table" class="recordings-table">
+                <thead>
+                    <tr>
+                        <th>Serial Number</th>
+                        <th>State</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="recordings-tbody">
+                    <tr>
+                        <td colspan="3" class="empty-state">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='mpegts.js') }}"></script>
+    <script src="{{ url_for('static', filename='live.js') }}"></script>
+</body>
+
+</html>

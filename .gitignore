@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Auto-generated Protobuf files
+*_pb2.py
+*_pb2_grpc.py
+protos/**/*.proto
+
+# Project Specific
+temp/
