@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/*
+ * VRM Test Tool 커스텀 테마
+ * 기존 다크 테마 색상 체계를 Tailwind CSS 커스텀 변수로 정의
+ */
+@theme {
+  /* 배경 색상 */
+  --color-bg-app: #0a0a0a;
+  --color-bg-sidebar: #1f1f1f;
+  --color-bg-card: #111111;
+  --color-bg-input: #1a1a1a;
+  --color-bg-hover: #2a2a2a;
+
+  /* 텍스트 색상 */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a0a0a0;
+  --color-text-muted: #6b7280;
+  --color-text-accent: #60a5fa;
+
+  /* 브랜드 색상 */
+  --color-brand: #3b82f6;
+  --color-brand-hover: #2563eb;
+
+  /* 상태 색상 */
+  --color-status-running: #10b981;
+  --color-status-error: #ef4444;
+  --color-status-pending: #f59e0b;
+  --color-status-stopped: #6b7280;
+
+  /* 보더 */
+  --color-border-subtle: #2e2e2e;
+  --color-border-focus: #3b82f6;
+
+  /* 폰트 */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* 그림자 */
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+/* 기본 스타일 */
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-app);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* 스크롤바 커스텀 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
