@@ -188,15 +188,24 @@ class SnapshotReceiver:
 
         if len(recording_ids) > 1:
             remaining_ids = recording_ids[1:]
-            # 병렬 재시도 호출
-            tasks = []
-            for rid in remaining_ids:
-                task = self._take_with_retry(rid, ref_sec, ref_nano, 4)
-                tasks.append((rid, task))
+
+            # asyncio.gather로 전 채널 동시 호출 — 순차 await 시 마스터 TS가 stale 됨
+            gather_results = await asyncio.gather(
+                *(self._take_with_retry(rid, ref_sec, ref_nano, 4)
+                  for rid in remaining_ids),
+                return_exceptions=True,
+            )
 
             all_success = True
-            for rid, task in tasks:
-                result = await task
+            for rid, result in zip(remaining_ids, gather_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"채널 {rid} 예외: {result} — 그룹 폐기")
+                    group.failed_channels.append(rid)
+                    if self._session:
+                        self._session.total_failed += 1
+                    all_success = False
+                    continue
+
                 if result is None:
                     logger.warning(
                         f"채널 {rid} 캡처 실패 "
@@ -206,7 +215,7 @@ class SnapshotReceiver:
                     if self._session:
                         self._session.total_failed += 1
                     all_success = False
-                    break
+                    continue
 
                 _, image_data, actual_sec, actual_nano = result
                 actual_ms = actual_sec * 1000 + actual_nano // 1_000_000
@@ -222,7 +231,6 @@ class SnapshotReceiver:
                 ))
 
             if not all_success:
-                # 하나라도 실패 → 이 그룹 전체 폐기
                 return group
 
         # ── 3단계: 전 채널 성공 → 큐에 일괄 적재 ──
