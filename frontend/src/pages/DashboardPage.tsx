@@ -207,7 +207,10 @@ export default function DashboardPage() {
       {modalOpen && (
         <div
           className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-          onClick={() => setModalOpen(false)}
+          onMouseDown={(e) => {
+            /* 백드롭 자체를 직접 클릭했을 때만 닫기 (입력칸 드래그 시 닫힘 방지) */
+            if (e.target === e.currentTarget) setModalOpen(false);
+          }}
         >
           <div
             className="bg-card border border-border rounded-xl p-6 w-full max-w-lg"

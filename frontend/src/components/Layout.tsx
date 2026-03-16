@@ -15,6 +15,7 @@ export default function Layout() {
     { to: "/tester", label: "Tester" },
     { to: "/playlist", label: "Playlist" },
     { to: "/live", label: "Live Grid" },
+    { to: "/sync-viewer", label: "Sync Viewer" },
   ];
 
   return (

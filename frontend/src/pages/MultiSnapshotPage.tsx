@@ -10,6 +10,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
 import { takeBulkSnapshot } from "@/api/recording";
+import {
+  startReceiverCapture,
+  stopReceiverCapture,
+  getReceiverStatus,
+} from "@/api/snapshot_receiver";
 import Toast from "@/components/Toast";
 
 /* ────────────────── 타입 정의 ────────────────── */
@@ -43,6 +48,11 @@ export default function MultiSnapshotPage() {
   /* 캡처 상태 */
   const [isCapturing, setIsCapturing] = useState(false);
   const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ── 서버 모드 (Snapshot Receiver) 상태 ── */
+  const [serverMode, setServerMode] = useState(false);
+  const [serverStatus, setServerStatus] = useState<any>(null);
+  const serverPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* 히스토리 */
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -144,19 +154,43 @@ export default function MultiSnapshotPage() {
   );
 
   /* ── 캡처 시작 ── */
-  const startCapture = () => {
+  const startCapture = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) {
       showToast("채널을 선택해주세요.", "error");
       return;
     }
-    setIsCapturing(true);
 
-    /* 선택된 채널의 최소 FPS 기반 인터벌 계산 */
+    if (serverMode) {
+      /* ── 서버 모드: Snapshot Receiver에 캡처 위임 ── */
+      try {
+        const result = await startReceiverCapture(ids);
+        setIsCapturing(true);
+        showToast(
+          `서버 캡처 시작: ${ids.length}ch × ${result.fps}fps (${result.interval_ms}ms)`,
+          "success"
+        );
+        /* 상태 폴링 시작 (1초 간격) */
+        serverPollRef.current = setInterval(async () => {
+          try {
+            const status = await getReceiverStatus();
+            setServerStatus(status);
+          } catch {
+            /* 폴링 에러 무시 */
+          }
+        }, 1000);
+      } catch (err: any) {
+        const detail = err.response?.data?.detail || err.message;
+        showToast(`서버 캡처 시작 실패: ${detail}`, "error");
+      }
+      return;
+    }
+
+    /* ── 브라우저 모드: 기존 방식 ── */
+    setIsCapturing(true);
     const interval = calculateCaptureInterval(ids);
     console.log(`[MultiSnapshot] Capture interval: ${interval}ms (based on min FPS)`);
 
-    /* 즉시 한 번 촬영 + 인터벌 시작 */
     takeSingleCapture(ids);
     captureTimerRef.current = setInterval(() => {
       takeSingleCapture(ids);
@@ -164,18 +198,36 @@ export default function MultiSnapshotPage() {
   };
 
   /* ── 캡처 중지 ── */
-  const stopCapture = useCallback(() => {
+  const stopCapture = useCallback(async () => {
+    if (serverMode && isCapturing) {
+      /* 서버 모드 중지 */
+      try {
+        const result = await stopReceiverCapture();
+        showToast(
+          `서버 캡처 종료: ${result.total_captured}장 캡처, ${result.total_dropped}장 드롭`,
+          "success"
+        );
+      } catch {
+        /* 중지 실패해도 UI는 정리 */
+      }
+      if (serverPollRef.current) {
+        clearInterval(serverPollRef.current);
+        serverPollRef.current = null;
+      }
+    }
+
     setIsCapturing(false);
     if (captureTimerRef.current) {
       clearInterval(captureTimerRef.current);
       captureTimerRef.current = null;
     }
-  }, []);
+  }, [serverMode, isCapturing, showToast]);
 
   /* 언마운트 시 타이머 정리 */
   useEffect(() => {
     return () => {
       if (captureTimerRef.current) clearInterval(captureTimerRef.current);
+      if (serverPollRef.current) clearInterval(serverPollRef.current);
     };
   }, []);
 
@@ -225,6 +277,75 @@ export default function MultiSnapshotPage() {
           </div>
         </div>
 
+        {/* ── 서버 모드 토글 ── */}
+        <div className="px-4 pt-3 pb-1">
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-xs text-text-secondary">Server Mode</span>
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={serverMode}
+                onChange={(e) => setServerMode(e.target.checked)}
+                disabled={isCapturing}
+                className="sr-only"
+              />
+              <div
+                onClick={() => !isCapturing && setServerMode(!serverMode)}
+                className={`w-9 h-5 rounded-full transition-colors ${
+                  serverMode ? "bg-brand" : "bg-bg-hover"
+                } ${isCapturing ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    serverMode ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </div>
+            </div>
+          </label>
+          {serverMode && (
+            <p className="text-[10px] text-text-muted mt-1">
+              24fps 고속 캡처 → 디스크 저장
+            </p>
+          )}
+        </div>
+
+        {/* ── 서버 상태 표시 (서버 모드 + 캡처 중일 때) ── */}
+        {serverMode && isCapturing && serverStatus?.session && (
+          <div className="px-4 py-2 text-[10px] space-y-1 border-t border-border">
+            <div className="flex justify-between text-text-secondary">
+              <span>캡처</span>
+              <span className="font-mono text-text-primary">
+                {serverStatus.session.total_captured}장
+              </span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>저장</span>
+              <span className="font-mono text-status-running">
+                {serverStatus.writer?.total_saved ?? 0}장
+              </span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>드롭</span>
+              <span className="font-mono text-status-error">
+                {serverStatus.session.total_dropped}장
+              </span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>큐</span>
+              <span className="font-mono">
+                {serverStatus.queue?.current_size}/{serverStatus.queue?.max_size}
+              </span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>속도</span>
+              <span className="font-mono">
+                {serverStatus.session.capture_rate} img/s
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* 캡처 제어 버튼 */}
         <div className="p-4">
           {!isCapturing ? (
@@ -233,7 +354,7 @@ export default function MultiSnapshotPage() {
               disabled={selectedIds.size === 0}
               className="w-full px-4 py-2 bg-brand text-white rounded-lg font-semibold text-sm hover:bg-brand/80 transition disabled:opacity-50"
             >
-              Start Capture
+              {serverMode ? "Start Server Capture" : "Start Capture"}
             </button>
           ) : (
             <button

@@ -5,6 +5,7 @@ import TesterPage from "@/pages/TesterPage";
 import LivePage from "@/pages/LivePage";
 import PlaylistPage from "@/pages/PlaylistPage";
 import MultiSnapshotPage from "@/pages/MultiSnapshotPage";
+import SyncViewerPage from "@/pages/SyncViewerPage";
 
 /**
  * 앱 루트 — 라우팅 설정
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/tester" element={<TesterPage />} />
           <Route path="/playlist" element={<PlaylistPage />} />
           <Route path="/live" element={<LivePage />} />
+          <Route path="/sync-viewer" element={<SyncViewerPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -24,6 +24,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true, /* /api/ws/live/* WebSocket 프록시 지원 */
       },
+      /* Snapshot Receiver 서버 프록시 (포트 8200) */
+      "/capture": {
+        target: "http://localhost:8200",
+        changeOrigin: true,
+      },
     },
   },
 });
