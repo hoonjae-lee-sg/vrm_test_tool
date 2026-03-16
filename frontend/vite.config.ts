@@ -9,6 +9,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  /* 프로덕션 빌드: dist/ 디렉토리에 출력 → FastAPI static files로 서빙 */
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+  },
   server: {
     port: 5173,
     host: "0.0.0.0", /* Docker 컨테이너 외부에서 접근 허용 */
@@ -17,10 +22,7 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8100",
         changeOrigin: true,
-      },
-      "/ws": {
-        target: "ws://localhost:8100",
-        ws: true,
+        ws: true, /* /api/ws/live/* WebSocket 프록시 지원 */
       },
     },
   },

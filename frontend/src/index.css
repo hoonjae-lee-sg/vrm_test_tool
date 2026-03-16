@@ -2,51 +2,65 @@
 
 /*
  * VRM Test Tool 커스텀 테마
- * 기존 다크 테마 색상 체계를 Tailwind CSS 커스텀 변수로 정의
+ * 기존 Supergate 다크 테마 (style.css) 색상 체계를 Tailwind CSS v4 @theme으로 정의
  */
 @theme {
-  /* 배경 색상 */
-  --color-bg-app: #0a0a0a;
-  --color-bg-sidebar: #1f1f1f;
+  /* ── 배경 색상 (기존 style.css 기준) ── */
+  --color-bg-app: #000000;
+  --color-bg-sidebar: #000000;
   --color-bg-card: #111111;
-  --color-bg-input: #1a1a1a;
-  --color-bg-hover: #2a2a2a;
+  --color-bg-input: #111111;
+  --color-bg-hover: #222222;
 
-  /* 텍스트 색상 */
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #a0a0a0;
-  --color-text-muted: #6b7280;
-  --color-text-accent: #60a5fa;
+  /* ── 텍스트 색상 (Slate 계열) ── */
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-text-accent: #3b82f6;
 
-  /* 브랜드 색상 */
+  /* ── 브랜드 색상 (Supergate Blue) ── */
   --color-brand: #3b82f6;
   --color-brand-hover: #2563eb;
 
-  /* 상태 색상 */
+  /* ── 상태 색상 ── */
   --color-status-running: #10b981;
   --color-status-error: #ef4444;
   --color-status-pending: #f59e0b;
   --color-status-stopped: #6b7280;
 
-  /* 보더 */
-  --color-border-subtle: #2e2e2e;
+  /* ── 보더 (Slate 700) ── */
+  --color-border: #334155;
+  --color-border-subtle: #334155;
   --color-border-focus: #3b82f6;
 
-  /* 폰트 */
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* ── 카드 hover ── */
+  --color-card: #111111;
+  --color-card-hover: #1a1a1a;
 
-  /* 그림자 */
+  /* ── 폰트 ── */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* ── 그림자 ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+
+  /* ── 애니메이션 ── */
+  --animate-fade-in: fade-in 0.3s ease;
+  --animate-slide-in: slide-in 0.3s ease-out;
 }
 
-/* 기본 스타일 */
+/* 웹 폰트는 index.html <link> 태그로 로드 (CSS @import 순서 제약 회피) */
+
+/* ── 기본 스타일 ── */
 body {
   margin: 0;
   font-family: var(--font-sans);
   background-color: var(--color-bg-app);
   color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -55,7 +69,26 @@ body {
   min-height: 100vh;
 }
 
-/* 스크롤바 커스텀 */
+/* ── 입력 필드 공통 포커스 스타일 ── */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* ── select 기본 스타일 ── */
+select {
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+/* ── 스크롤바 커스텀 ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -72,4 +105,20 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* ── 키프레임 애니메이션 ── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
 }

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.routers import recording, snapshot, clip, health
+from backend.routers import recording, snapshot, clip, health, websocket
 
 app = FastAPI(
     title="VRM Test Tool API",
@@ -33,6 +33,7 @@ app.include_router(recording.router)
 app.include_router(snapshot.router)
 app.include_router(clip.router)
 app.include_router(health.router)
+app.include_router(websocket.router)
 
 # 프로덕션: React 빌드 결과물 정적 파일 서빙
 _frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
