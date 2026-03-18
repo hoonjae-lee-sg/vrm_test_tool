@@ -152,9 +152,10 @@ async def stop_capture():
 @app.get("/capture/status")
 async def get_capture_status():
     """
-    캡처 상태 조회 — 현재 세션 정보 + 큐 상태 + 저장 워커 통계
+    캡처 상태 조회 — 현재 세션 정보 + 큐 상태 + 저장 워커 통계 + 동기화 진단
 
     캡처가 진행 중이 아니어도 마지막 세션 정보와 워커 상태를 반환
+    동기화 진단 CSV 로그 경로도 포함하여 오프라인 분석 지원
     """
     session = receiver.session
     q_stats = queue_manager.get_stats()
@@ -177,6 +178,14 @@ async def get_capture_status():
             "drop_rate_pct": round(session.drop_rate_pct, 1),
         }
 
+    # 진단 정보: 동기화 CSV 로그 경로
+    import os
+    diag_info = {
+        "sync_log_enabled": config.diag_sync_log_enabled,
+        "sync_log_dir": config.diag_sync_log_dir,
+        "stats_interval": config.diag_stats_interval,
+    }
+
     return {
         "session": session_info,
         "queue": {
@@ -191,6 +200,7 @@ async def get_capture_status():
             "estimated_memory_mb": q_stats.estimated_memory_mb,
         },
         "writer": w_stats,
+        "diagnostics": diag_info,
     }
 
 

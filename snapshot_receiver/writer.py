@@ -98,8 +98,18 @@ class SnapshotWriter:
             return True
 
         except OSError as e:
-            logger.error(f"파일 저장 실패: {e}")
-            return False
+            # 디렉토리 삭제 등으로 캐시 불일치 발생 시 → 캐시 무효화 후 재시도
+            self._dir_cache.discard(hour_dir)
+            try:
+                os.makedirs(hour_dir, exist_ok=True)
+                with open(filepath, "wb") as f:
+                    f.write(item.image_data)
+                self._dir_cache.add(hour_dir)
+                logger.info(f"디렉토리 재생성 후 저장 성공: {filepath}")
+                return True
+            except OSError as retry_err:
+                logger.error(f"파일 저장 실패 (재시도 포함): {retry_err}")
+                return False
 
     def _write_batch(self, items: list[SnapshotItem]) -> int:
         """

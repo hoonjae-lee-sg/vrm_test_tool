@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
-import { takeBulkSnapshot } from "@/api/recording";
+import { takeBulkSnapshot, BulkSnapshotResponse } from "@/api/recording";
 import {
   startReceiverCapture,
   stopReceiverCapture,
@@ -22,6 +22,8 @@ interface SnapshotResult {
   [recordingId: string]: {
     actual_timestamp: { seconds: string; nanos: string };
     image_data: string;
+    is_pts_synced?: boolean;
+    auto_sync_offset_ms?: number;
   };
 }
 
@@ -30,6 +32,8 @@ interface HistoryItem {
   displayTime: string;
   camCount: number;
   data: SnapshotResult;
+  masterId?: string;
+  syncWarnings?: string[];
 }
 
 /* ────────────────── 메인 컴포넌트 ────────────────── */
@@ -86,12 +90,14 @@ export default function MultiSnapshotPage() {
   const takeSingleCapture = useCallback(
     async (ids: string[]) => {
       try {
-        const results = await takeBulkSnapshot(ids);
-        if (!results || Object.keys(results).length === 0) return;
+        const response: BulkSnapshotResponse = await takeBulkSnapshot(ids);
+        const snapshots = response.snapshots;
+        if (!snapshots || Object.keys(snapshots).length === 0) return;
 
-        /* 첫 번째 결과에서 타임스탬프 추출 */
-        const firstKey = Object.keys(results)[0];
-        const ts = results[firstKey].actual_timestamp;
+        /* 마스터 카메라 기준 타임스탬프 추출 */
+        const masterId = response.master_id;
+        const firstKey = masterId && snapshots[masterId] ? masterId : Object.keys(snapshots)[0];
+        const ts = snapshots[firstKey].actual_timestamp;
         const seconds = parseInt(ts.seconds || "0");
         const nanos = parseInt(ts.nanos || "0");
         const timeKey = `${seconds}.${nanos}`;
@@ -107,11 +113,18 @@ export default function MultiSnapshotPage() {
             .toString()
             .padStart(3, "0")}`;
 
+        /* 동기화 경고 토스트 표시 (첫 1회만) */
+        if (response.sync_warnings && response.sync_warnings.length > 0) {
+          showToast(response.sync_warnings[0], "error");
+        }
+
         const newItem: HistoryItem = {
           timeKey,
           displayTime,
-          camCount: Object.keys(results).length,
-          data: results,
+          camCount: Object.keys(snapshots).length,
+          data: snapshots,
+          masterId: response.master_id,
+          syncWarnings: response.sync_warnings,
         };
 
         setHistory((prev) => {
@@ -412,14 +425,36 @@ export default function MultiSnapshotPage() {
                 Channels: {activeItem.camCount}
               </p>
             </div>
+            {/* 동기화 경고 배너 */}
+            {activeItem.syncWarnings && activeItem.syncWarnings.length > 0 && (
+              <div className="mb-3 p-2 bg-status-error/10 border border-status-error/30 rounded-lg">
+                {activeItem.syncWarnings.map((w, i) => (
+                  <p key={i} className="text-xs text-status-error">{w}</p>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {Object.entries(activeItem.data).map(([rid, snap]) => (
                 <div
                   key={rid}
-                  className="bg-black rounded-lg border border-border overflow-hidden relative"
+                  className={`bg-black rounded-lg border overflow-hidden relative ${
+                    snap.is_pts_synced === false ? "border-status-error/50" : "border-border"
+                  }`}
                 >
-                  <div className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded z-10 font-mono">
-                    {rid}
+                  <div className="absolute top-1.5 left-1.5 flex items-center gap-1 z-10">
+                    <span className="bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                      {rid}
+                    </span>
+                    {rid === activeItem.masterId && (
+                      <span className="bg-brand/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                        MASTER
+                      </span>
+                    )}
+                    {snap.is_pts_synced === false && (
+                      <span className="bg-status-error/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                        NO SYNC
+                      </span>
+                    )}
                   </div>
                   <img
                     src={snap.image_data}

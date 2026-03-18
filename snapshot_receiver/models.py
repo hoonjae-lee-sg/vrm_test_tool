@@ -55,6 +55,11 @@ class CaptureGroup:
     failed_channels: list = field(default_factory=list)  # 실패한 채널 ID 목록
     created_at: float = field(default_factory=time.time)
 
+    # ── 진단 계측 필드 ──
+    max_diff_ms: int = 0                # 그룹 내 최대 동기화 오차 (절대값, ms)
+    per_channel_diff: dict = field(default_factory=dict)  # {recording_id: diff_ms} 채널별 오차
+    target_timestamp_ms: int = 0        # 동시 캡처 타겟 타임스탬프 (ms)
+
 
 @dataclass
 class CaptureSession:
@@ -75,6 +80,7 @@ class CaptureSession:
     total_dropped: int = 0          # 드롭된 이미지 수
     total_failed: int = 0           # gRPC 호출 실패 수
     total_groups: int = 0           # 총 캡처 그룹 수
+    total_skipped_bad: int = 0      # BAD 판정(>100ms diff)으로 저장 스킵된 그룹 수
 
     @property
     def capture_rate(self) -> float:

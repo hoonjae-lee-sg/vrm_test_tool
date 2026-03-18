@@ -136,104 +136,140 @@ class SnapshotReceiver:
 
     async def capture_once(self, recording_ids: list[str]) -> Optional[CaptureGroup]:
         """
-        1회 동기화 멀티스냅샷 캡처 수행 (All-or-Nothing)
+        1회 동기화 멀티스냅샷 캡처 수행 (All-or-Nothing, 2-Phase 동시 캡처)
 
-        1. 마스터 채널에서 기준 타임스탬프 획득 (재시도 포함)
-        2. 나머지 채널에서 strategy=PRECISE(4)로 동기화 캡처 (재시도 포함)
-        3. 하나라도 실패하면 그룹 전체 폐기 — 큐에 적재하지 않음
+        Phase 1: 전 채널에 동시 gRPC 호출 (target_ts 없음)
+          → 각 서버가 자체 EMA 지연으로 최적 프레임 선택 → 기준 타임스탬프 확보
+        Phase 2: 기준 타임스탬프로 전 채널 동시 PRECISE(4) 재요청
+          → 동일 시점의 프레임을 반환하여 정밀 동기화 달성
+
+        핵심 설계:
+        - 클라이언트 측 하드코딩 지연(250ms)을 사용하지 않음
+        - 서버 측 카메라별 EMA 지연이 자동으로 최적 프레임을 선택
+        - Phase 2에서 통일된 타겟으로 모든 채널을 정렬
 
         Args:
             recording_ids: 캡처 대상 녹화 ID 목록
 
         Returns:
-            CaptureGroup (캡처 결과 메타데이터) 또는 None
+            CaptureGroup (캡처 결과 메타데이터 + 진단 필드) 또는 None
         """
         if not recording_ids:
             return None
 
         group = CaptureGroup(channel_count=len(recording_ids))
 
-        # ── 1단계: 마스터 채널 스냅샷 → 기준 타임스탬프 획득 (재시도) ──
-        master_id = recording_ids[0]
-        master_result = await self._take_with_retry(master_id)
+        # ── Phase 1: 전 채널 동시 호출 (target_ts 없음) ──
+        # 각 서버 측 Recorder가 자체 EMA 추정 RTSP 지연으로 최적 프레임 선택
+        # 클라이언트가 지연을 추정하지 않으므로 "Frame not found" 오류 방지
+        phase1_results = await asyncio.gather(
+            *(self._take_with_retry(rid)
+              for rid in recording_ids),
+            return_exceptions=True,
+        )
 
-        if master_result is None:
-            logger.warning(
-                f"마스터 채널 {master_id} 캡처 실패 "
-                f"({config.capture_max_retries}회 재시도 소진)"
-            )
-            group.failed_channels.append(master_id)
+        # Phase 1 전 채널의 actual_timestamp 수집 후 최솟값을 기준 타임스탬프로 선택
+        # 최솟값 = 가장 느린 카메라(RTSP 지연 최대)의 프레임 시점
+        # → 모든 카메라 버퍼에 이 시점이 반드시 포함됨 (느린 카메라의 최신 = 다른 카메라의 과거)
+        # → Phase 2에서 NOT_FOUND 방지
+        all_timestamps = []
+        for rid, result in zip(recording_ids, phase1_results):
+            if isinstance(result, Exception) or result is None:
+                continue
+            _, _, actual_sec, actual_nano = result
+            actual_ms = actual_sec * 1000 + actual_nano // 1_000_000
+            all_timestamps.append((actual_sec, actual_nano, actual_ms))
+
+        if all_timestamps:
+            # 최솟값 선택: 가장 느린 카메라 기준으로 모든 채널 버퍼 범위 내 보장
+            ref_sec, ref_nano, ref_ms = min(all_timestamps, key=lambda x: x[2])
+        else:
+            ref_sec = None
+            ref_nano = None
+            ref_ms = None
+
+        if ref_sec is None:
+            # 전 채널 Phase 1 실패 → 그룹 폐기
+            logger.warning("Phase 1: 전 채널 스냅샷 획득 실패")
+            for rid in recording_ids:
+                group.failed_channels.append(rid)
             if self._session:
-                self._session.total_failed += 1
+                self._session.total_failed += len(recording_ids)
             return group
 
-        _, master_image, ref_sec, ref_nano = master_result
         group.master_timestamp_sec = ref_sec
         group.master_timestamp_nano = ref_nano
-        ref_ms = ref_sec * 1000 + ref_nano // 1_000_000
+        group.target_timestamp_ms = ref_ms
 
-        # ── 2단계: 나머지 채널 동기화 캡처 (병렬, 재시도 포함) ──
-        # 결과를 임시 버퍼에 모은 후, 전부 성공해야 큐에 적재
+        # ── Phase 2: 기준 타임스탬프로 전 채널 동시 PRECISE 요청 ──
+        # Phase 1에서 확보한 실제 프레임 타임스탬프를 모든 채널에 전달
+        # → 동일 시점의 프레임을 반환하여 카메라 간 동기화
+        phase2_results = await asyncio.gather(
+            *(self._take_with_retry(rid, ref_sec, ref_nano, 4)
+              for rid in recording_ids),
+            return_exceptions=True,
+        )
+
+        # ── 결과 수집 + 진단 데이터 생성 ──
         captured_items: list[SnapshotItem] = []
+        all_success = True
 
-        # 마스터 이미지 먼저 추가
-        captured_items.append(SnapshotItem(
-            recording_id=master_id,
-            timestamp_sec=ref_sec,
-            timestamp_nano=ref_nano,
-            image_data=master_image,
-            capture_group_id=group.group_id,
-            diff_ms=0,
-        ))
+        for rid, result in zip(recording_ids, phase2_results):
+            if isinstance(result, Exception):
+                logger.warning(f"채널 {rid} 예외: {result} — 그룹 폐기")
+                group.failed_channels.append(rid)
+                if self._session:
+                    self._session.total_failed += 1
+                all_success = False
+                continue
 
-        if len(recording_ids) > 1:
-            remaining_ids = recording_ids[1:]
+            if result is None:
+                logger.warning(
+                    f"채널 {rid} 캡처 실패 "
+                    f"({config.capture_max_retries}회 재시도 소진) — 그룹 폐기"
+                )
+                group.failed_channels.append(rid)
+                if self._session:
+                    self._session.total_failed += 1
+                all_success = False
+                continue
 
-            # asyncio.gather로 전 채널 동시 호출 — 순차 await 시 마스터 TS가 stale 됨
-            gather_results = await asyncio.gather(
-                *(self._take_with_retry(rid, ref_sec, ref_nano, 4)
-                  for rid in remaining_ids),
-                return_exceptions=True,
+            _, image_data, actual_sec, actual_nano = result
+            actual_ms = actual_sec * 1000 + actual_nano // 1_000_000
+            diff_ms = actual_ms - ref_ms
+
+            # 진단 데이터: 채널별 diff_ms 기록
+            group.per_channel_diff[rid] = diff_ms
+
+            captured_items.append(SnapshotItem(
+                recording_id=rid,
+                timestamp_sec=ref_sec,
+                timestamp_nano=ref_nano,
+                image_data=image_data,
+                capture_group_id=group.group_id,
+                diff_ms=diff_ms,
+            ))
+
+        if not all_success:
+            return group
+
+        # 진단: 그룹 내 최대 동기화 오차 계산
+        if group.per_channel_diff:
+            group.max_diff_ms = max(abs(d) for d in group.per_channel_diff.values())
+
+        # BAD 그룹(max_diff > 100ms) 저장 스킵: 네트워크 지연 스파이크 구간 제외
+        # 타임스탬프 신뢰도가 낮은 프레임이 포함된 그룹은 저장하지 않음
+        BAD_THRESHOLD_MS = 100
+        if group.max_diff_ms > BAD_THRESHOLD_MS:
+            logger.info(
+                f"그룹 {group.group_id} BAD 판정 "
+                f"(max_diff={group.max_diff_ms}ms) — 저장 스킵"
             )
+            if self._session:
+                self._session.total_skipped_bad += 1
+            return group
 
-            all_success = True
-            for rid, result in zip(remaining_ids, gather_results):
-                if isinstance(result, Exception):
-                    logger.warning(f"채널 {rid} 예외: {result} — 그룹 폐기")
-                    group.failed_channels.append(rid)
-                    if self._session:
-                        self._session.total_failed += 1
-                    all_success = False
-                    continue
-
-                if result is None:
-                    logger.warning(
-                        f"채널 {rid} 캡처 실패 "
-                        f"({config.capture_max_retries}회 재시도 소진) — 그룹 폐기"
-                    )
-                    group.failed_channels.append(rid)
-                    if self._session:
-                        self._session.total_failed += 1
-                    all_success = False
-                    continue
-
-                _, image_data, actual_sec, actual_nano = result
-                actual_ms = actual_sec * 1000 + actual_nano // 1_000_000
-                diff_ms = actual_ms - ref_ms
-
-                captured_items.append(SnapshotItem(
-                    recording_id=rid,
-                    timestamp_sec=ref_sec,
-                    timestamp_nano=ref_nano,
-                    image_data=image_data,
-                    capture_group_id=group.group_id,
-                    diff_ms=diff_ms,
-                ))
-
-            if not all_success:
-                return group
-
-        # ── 3단계: 전 채널 성공 → 큐에 일괄 적재 ──
+        # ── 전 채널 성공 → 큐에 일괄 적재 ──
         for item in captured_items:
             try:
                 self._queue.put_nowait(item)
@@ -250,6 +286,7 @@ class SnapshotReceiver:
         반복 캡처 루프 — FPS 기반 정밀 인터벌로 capture_once를 반복 호출
 
         monotonic clock 기반 드리프트 보정으로 정확한 인터벌 유지
+        진단 계측: diff_ms 시계열 로그 수집 + 통계 요약 출력
         """
         interval_sec = 1.0 / fps
         logger.info(
@@ -258,6 +295,15 @@ class SnapshotReceiver:
         )
 
         next_capture_time = time.monotonic()
+
+        # ── 진단 계측: diff_ms CSV 로그 초기화 ──
+        diag_csv_writer = None
+        diag_csv_file = None
+        if config.diag_sync_log_enabled:
+            diag_csv_writer, diag_csv_file = self._init_diag_csv(recording_ids)
+
+        # 진단 통계 수집용 변수 (일정 간격으로 요약 출력)
+        diag_diff_samples: list[int] = []  # max_diff_ms 수집 (통계용)
 
         while self._session and self._session.state == CaptureState.RUNNING:
             cycle_start = time.monotonic()
@@ -268,6 +314,17 @@ class SnapshotReceiver:
             if group:
                 self._session.total_groups += 1
                 self._session.total_captured += group.success_count
+
+                # ── 진단 계측: diff_ms 시계열 로그 기록 ──
+                if config.diag_sync_log_enabled and diag_csv_writer and group.success_count > 0:
+                    self._write_diag_csv_row(diag_csv_writer, group, recording_ids)
+                    diag_diff_samples.append(group.max_diff_ms)
+
+                # 진단 통계 요약 출력 (diag_stats_interval 주기마다)
+                if self._session.total_groups % config.diag_stats_interval == 0:
+                    self._log_diag_stats(diag_diff_samples)
+                    diag_diff_samples.clear()
+
                 if self._session.total_groups % 100 == 0:
                     logger.info(
                         f"캡처 통계: 그룹={self._session.total_groups}, "
@@ -295,6 +352,15 @@ class SnapshotReceiver:
                 if missed > 0:
                     next_capture_time += missed * interval_sec
                     logger.warning(f"캡처 지연 — {missed}프레임 스킵")
+
+        # ── 진단 CSV 파일 정리 ──
+        if diag_csv_file:
+            diag_csv_file.close()
+            logger.info("진단 CSV 로그 파일 저장 완료")
+
+        # 남은 진단 통계 출력
+        if diag_diff_samples:
+            self._log_diag_stats(diag_diff_samples)
 
         logger.info("캡처 루프 종료")
 
@@ -357,6 +423,106 @@ class SnapshotReceiver:
             f"{result.total_dropped}장 드롭, {result.total_failed}건 실패"
         )
         return result
+
+    # ── 진단 계측 헬퍼 메서드 ──
+
+    def _init_diag_csv(self, recording_ids: list[str]):
+        """
+        진단용 CSV 로그 파일 초기화
+        컬럼: timestamp, group_id, target_ts, max_diff_ms, {channel_id}_diff_ms ...
+
+        Returns:
+            (csv.writer, file_handle) 또는 (None, None) 실패 시
+        """
+        import csv
+        from datetime import datetime
+
+        try:
+            diag_dir = config.diag_sync_log_dir
+            os.makedirs(diag_dir, exist_ok=True)
+
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_path = os.path.join(diag_dir, f"sync_diag_{timestamp_str}.csv")
+
+            f = open(csv_path, "w", newline="")
+            writer = csv.writer(f)
+
+            # 헤더: 고정 컬럼 + 채널별 diff 컬럼
+            header = ["timestamp", "group_id", "target_ts_ms", "max_diff_ms"]
+            for rid in recording_ids:
+                # recording_id에서 마지막 부분만 사용 (가독성)
+                short_id = rid.split("/")[-1] if "/" in rid else rid[-8:]
+                header.append(f"{short_id}_diff_ms")
+            writer.writerow(header)
+
+            logger.info(f"진단 CSV 로그 시작: {csv_path}")
+            return writer, f
+        except Exception as e:
+            logger.error(f"진단 CSV 초기화 실패: {e}")
+            return None, None
+
+    def _write_diag_csv_row(self, writer, group: CaptureGroup, recording_ids: list[str]):
+        """진단 CSV에 1행 기록 — 캡처 그룹 1개의 동기화 오차 데이터"""
+        import csv
+        from datetime import datetime
+
+        try:
+            row = [
+                datetime.now().strftime("%H:%M:%S.%f")[:-3],  # 밀리초까지
+                group.group_id,
+                group.target_timestamp_ms,
+                group.max_diff_ms,
+            ]
+            # 채널 순서대로 diff_ms 추가 (없으면 "N/A")
+            for rid in recording_ids:
+                diff = group.per_channel_diff.get(rid, None)
+                row.append(diff if diff is not None else "N/A")
+            writer.writerow(row)
+        except Exception:
+            pass  # 진단 로그 실패가 캡처에 영향을 주면 안 됨
+
+    def _log_diag_stats(self, diff_samples: list[int]):
+        """
+        진단 통계 요약 로그 출력 — diff_ms 분포 분석
+
+        분석 항목:
+        - 평균/중앙값/최대값 → 전체적 동기화 수준 파악
+        - 표준편차 → 랜덤 지터 vs 고정 오프셋 판별
+        - 10ms/30ms/50ms 이내 비율 → 목표 달성도 확인
+        """
+        if not diff_samples:
+            return
+
+        sorted_samples = sorted(diff_samples)
+        n = len(sorted_samples)
+        avg = sum(sorted_samples) / n
+        median = sorted_samples[n // 2]
+        max_val = sorted_samples[-1]
+        min_val = sorted_samples[0]
+
+        # 표준편차 계산
+        variance = sum((x - avg) ** 2 for x in sorted_samples) / n
+        stddev = variance ** 0.5
+
+        # 목표 달성률 (절대값 기준)
+        within_10ms = sum(1 for x in sorted_samples if x <= 10) / n * 100
+        within_30ms = sum(1 for x in sorted_samples if x <= 30) / n * 100
+        within_50ms = sum(1 for x in sorted_samples if x <= 50) / n * 100
+
+        logger.info(
+            f"[동기화 진단] n={n} | "
+            f"avg={avg:.1f}ms median={median}ms max={max_val}ms min={min_val}ms | "
+            f"stddev={stddev:.1f}ms | "
+            f"≤10ms:{within_10ms:.0f}% ≤30ms:{within_30ms:.0f}% ≤50ms:{within_50ms:.0f}%"
+        )
+
+        # 패턴 분류 힌트
+        if stddev < 5 and avg > 30:
+            logger.info("[동기화 진단] 패턴: 고정 오프셋 (stddev 낮음, avg 높음) → Step 3 캘리브레이션 권장")
+        elif stddev > 20:
+            logger.info("[동기화 진단] 패턴: 랜덤 지터 (stddev 높음) → Step 2 RTCP sync 효과 확인 필요")
+        elif max_val > 100 and within_30ms > 80:
+            logger.info("[동기화 진단] 패턴: 간헐적 스파이크 → GC/스케줄링 지연 의심")
 
     @property
     def session(self) -> Optional[CaptureSession]:

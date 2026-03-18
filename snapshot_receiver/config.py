@@ -49,6 +49,15 @@ class Config:
     # ── 디스크 용량 안전 마진 (GB) ──
     disk_min_free_gb: float = float(os.environ.get("DISK_MIN_FREE_GB", "5.0"))
 
+    # ── 진단 계측 설정 ──
+    # 동기화 오차 진단 CSV 로그 활성화 (diff_ms 시계열 기록)
+    diag_sync_log_enabled: bool = os.environ.get("DIAG_SYNC_LOG_ENABLED", "true").lower() == "true"
+    # 진단 로그 저장 경로 (vrm_test_tool 루트 하위, data/ 폴더와 분리)
+    diag_sync_log_dir: str = os.environ.get("DIAG_SYNC_LOG_DIR",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sync_diagnostics"))
+    # 진단 통계 출력 간격 (캡처 그룹 수 단위)
+    diag_stats_interval: int = int(os.environ.get("DIAG_STATS_INTERVAL", "50"))
+
     @property
     def capture_interval_ms(self) -> float:
         """FPS 기반 캡처 인터벌 (밀리초)"""

@@ -42,6 +42,7 @@ class SnapshotRequest(BaseModel):
 class BulkSnapshotRequest(BaseModel):
     """멀티 동기화 스냅샷 요청"""
     recording_ids: list[str]
+    master_id: Optional[str] = None  # 지정 시 해당 카메라를 기준 마스터로 사용
 
 
 class EventClipRequest(BaseModel):

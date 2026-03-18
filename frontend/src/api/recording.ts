@@ -60,10 +60,28 @@ export async function takeSnapshot(
   return res.data;
 }
 
+/** 멀티 동기화 스냅샷 응답 타입 */
+export interface BulkSnapshotResponse {
+  snapshots: {
+    [recordingId: string]: {
+      actual_timestamp: { seconds: string; nanos: string };
+      image_data: string;
+      is_pts_synced?: boolean;
+      auto_sync_offset_ms?: number;
+    };
+  };
+  master_id: string;
+  sync_warnings?: string[];
+}
+
 /** 멀티 동기화 스냅샷 */
-export async function takeBulkSnapshot(recordingIds: string[]) {
+export async function takeBulkSnapshot(
+  recordingIds: string[],
+  masterId?: string
+): Promise<BulkSnapshotResponse> {
   const res = await apiClient.post("/bulk-snapshot", {
     recording_ids: recordingIds,
+    master_id: masterId,
   });
   return res.data;
 }
