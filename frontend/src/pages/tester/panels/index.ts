@@ -4,6 +4,7 @@
  */
 export { default as StartPanel } from "./StartPanel";
 export { default as StopPanel } from "./StopPanel";
+export { default as RestartPanel } from "./RestartPanel";
 export { default as StatusPanel } from "./StatusPanel";
 export { default as SnapshotPanel } from "./SnapshotPanel";
 export { default as EventClipPanel } from "./EventClipPanel";

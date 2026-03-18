@@ -41,6 +41,12 @@ export async function stopRecording(recordingId: string) {
   return res.data;
 }
 
+/** 녹화 재시작 — STOPPED/ERROR 상태의 녹화를 동일 설정으로 재시작 */
+export async function restartRecording(recordingId: string) {
+  const res = await apiClient.post("/restart", { recording_id: recordingId });
+  return res.data;
+}
+
 /** 녹화 상태 조회 */
 export async function getRecordingStatus(recordingId: string) {
   const res = await apiClient.get(`/recordings/${recordingId}/status`);

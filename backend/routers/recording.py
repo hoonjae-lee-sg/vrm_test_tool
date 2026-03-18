@@ -77,6 +77,27 @@ async def stop_recording(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/restart")
+async def restart_recording(
+    req: RecordStopRequest,
+    client: GRPCClientService = Depends(get_grpc_client),
+):
+    """녹화 재시작 — STOPPED/ERROR 상태의 녹화를 동일 설정으로 재시작"""
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(
+                client.restart_recording,
+                recording_id=req.recording_id,
+                auth_token=req.auth_token,
+            ),
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/recordings/{recording_id}/status")
 async def get_recording_status(
     recording_id: str,

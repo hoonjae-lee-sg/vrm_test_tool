@@ -112,6 +112,14 @@ class GRPCClientService:
         response = self.record_stub.Start(request)
         return proto_to_dict(response)
 
+    def restart_recording(self, recording_id: str, auth_token: str = None):
+        """녹화 재시작 — STOPPED/ERROR 상태의 녹화를 동일 설정으로 재시작"""
+        request = record_pb2.RecordRestartReq(
+            recording_id=recording_id, auth_token=auth_token
+        )
+        response = self.record_stub.Restart(request)
+        return proto_to_dict(response)
+
     def stop_recording(self, recording_id: str, auth_token: str = None):
         """녹화 중지"""
         request = record_pb2.RecordStopReq(

@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
-import { startRecording, takeSnapshot, type StartRecordingParams } from "@/api/recording";
+import { startRecording, restartRecording, takeSnapshot, type StartRecordingParams } from "@/api/recording";
 import type { Recording } from "@/types/recording";
 import { DASHBOARD_REFRESH_INTERVAL_MS } from "@/constants";
 import { formatNumber } from "@/utils/format";
@@ -27,6 +27,7 @@ import {
   CameraIcon,
   PlusIcon,
   XMarkIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
 /* ────────────────── 프리셋 관련 유틸 ────────────────── */
@@ -70,7 +71,7 @@ const INITIAL_FORM: ModalFormData = {
 
 /* ────────────────── 메인 컴포넌트 ────────────────── */
 export default function DashboardPage() {
-  const { recordings } = useRecordings(DASHBOARD_REFRESH_INTERVAL_MS);
+  const { recordings, refresh } = useRecordings(DASHBOARD_REFRESH_INTERVAL_MS);
   const { toast, showToast } = useToast();
 
   /* 모달 상태 */
@@ -226,6 +227,8 @@ export default function DashboardPage() {
             <CameraCard
               key={rec.recording_id}
               recording={rec}
+              showToast={showToast}
+              refresh={refresh}
               onSnapshot={async (id) => {
                 try {
                   const res = await takeSnapshot(id);
@@ -389,15 +392,21 @@ export default function DashboardPage() {
 function CameraCard({
   recording,
   onSnapshot,
+  showToast,
+  refresh,
 }: {
   recording: Recording;
   onSnapshot: (id: string) => void;
+  showToast: (message: string, type: "success" | "error" | "info") => void;
+  refresh: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   /* mpegts.js 플레이어 인스턴스 ref — destroy/play 호출용 */
   const playerRef = useRef<mpegts.MSEPlayer | null>(null);
   const [snapping, setSnapping] = useState(false);
   const [streamStatus, setStreamStatus] = useState<string>("");
+  /** 녹화 재시작 로딩 상태 */
+  const [isRestarting, setIsRestarting] = useState(false);
 
   const state = recording.state || "UNKNOWN";
   const recId = recording.recording_id;
@@ -479,6 +488,20 @@ function CameraCard({
     setSnapping(false);
   };
 
+  /** 녹화 재시작 — STOPPED/ERROR 상태에서만 호출 가능 */
+  const handleRestart = async () => {
+    setIsRestarting(true);
+    try {
+      await restartRecording(recId);
+      showToast(`${recId} 재시작 성공`, "success");
+      refresh();
+    } catch (err: unknown) {
+      showToast("재시작 실패", "error");
+    } finally {
+      setIsRestarting(false);
+    }
+  };
+
   const createdAt = recording.created_at
     ? new Date(recording.created_at).toLocaleString("ko-KR", {
         month: "short",
@@ -538,19 +561,30 @@ function CameraCard({
 
         {/* 액션 버튼 — 글래스 구분선 영역 */}
         <div className="flex gap-2 pt-2 mt-1 border-t border-white/[0.06]">
-          <a
-            href={`/live?id=${recId}`}
-            className="flex-1 text-center px-2 py-1.5 bg-brand/10 text-brand text-xs rounded hover:bg-brand/20 transition"
-          >
-            Live View
-          </a>
-          <button
-            onClick={handleSnapshot}
-            disabled={snapping}
-            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-card-hover text-text-secondary text-xs rounded hover:text-text-primary transition disabled:opacity-50"
-          >
-            {snapping ? <><CameraIcon className="w-3.5 h-3.5 animate-pulse" />...</> : <><CameraIcon className="w-3.5 h-3.5" /> Snapshot</>}
-          </button>
+          {/* RUNNING 상태 전용 버튼 — Live View, Snapshot */}
+          {state === "RUNNING" && (
+            <>
+              <a
+                href={`/live?id=${recId}`}
+                className="flex-1 text-center px-2 py-1.5 bg-brand/10 text-brand text-xs rounded hover:bg-brand/20 transition"
+              >
+                Live View
+              </a>
+              <button
+                onClick={handleSnapshot}
+                disabled={snapping}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-card-hover text-text-secondary text-xs rounded hover:text-text-primary transition disabled:opacity-50"
+              >
+                {snapping ? <><CameraIcon className="w-3.5 h-3.5 animate-pulse" />...</> : <><CameraIcon className="w-3.5 h-3.5" /> Snapshot</>}
+              </button>
+            </>
+          )}
+          {/* STOPPED/ERROR 상태 전용 버튼 — 재시작 */}
+          {(state === "STOPPED" || state === 4 || state === "ERROR" || state === 5) && (
+            <Button variant="primary" size="sm" isLoading={isRestarting} onClick={handleRestart} className="flex-1">
+              <ArrowPathIcon className="w-3.5 h-3.5" /> Restart
+            </Button>
+          )}
           <a
             href="/tester"
             onClick={() => sessionStorage.setItem("target_id", recId)}

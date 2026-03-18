@@ -19,6 +19,7 @@ import LogViewer, { type LogEntry } from "./components/LogViewer";
 /* 패널 컴포넌트 임포트 */
 import StartPanel from "./panels/StartPanel";
 import StopPanel from "./panels/StopPanel";
+import RestartPanel from "./panels/RestartPanel";
 import StatusPanel from "./panels/StatusPanel";
 import SnapshotPanel from "./panels/SnapshotPanel";
 import EventClipPanel from "./panels/EventClipPanel";
@@ -31,6 +32,7 @@ import HealthPanel from "./panels/HealthPanel";
 type ApiPanel =
   | "start"
   | "stop"
+  | "restart"
   | "status"
   | "event-start"
   | "event-stop"
@@ -42,6 +44,7 @@ type ApiPanel =
 const API_MENU: { id: ApiPanel; label: string; method: string }[] = [
   { id: "start", label: "Start Recording", method: "POST" },
   { id: "stop", label: "Stop Recording", method: "POST" },
+  { id: "restart", label: "Restart Recording", method: "POST" },
   { id: "status", label: "Check Status", method: "GET" },
   { id: "event-start", label: "Start Event Clip", method: "POST" },
   { id: "event-stop", label: "Stop Event Clip", method: "POST" },
@@ -129,6 +132,15 @@ export default function TesterPage() {
         )}
         {activePanel === "stop" && (
           <StopPanel
+            recordingId={recordingId}
+            setRecordingId={setRecordingId}
+            addLog={addLog}
+            showToast={showToast}
+            refresh={refresh}
+          />
+        )}
+        {activePanel === "restart" && (
+          <RestartPanel
             recordingId={recordingId}
             setRecordingId={setRecordingId}
             addLog={addLog}
