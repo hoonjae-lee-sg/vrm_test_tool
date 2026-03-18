@@ -74,11 +74,14 @@ export interface BulkSnapshotResponse {
   sync_warnings?: string[];
 }
 
-/** 멀티 동기화 스냅샷 */
+/** 멀티 동기화 스냅샷
+ * 반환 형식: 새 형식 BulkSnapshotResponse 또는 구 형식 flat dict
+ * 프론트엔드에서 양쪽 모두 처리
+ */
 export async function takeBulkSnapshot(
   recordingIds: string[],
   masterId?: string
-): Promise<BulkSnapshotResponse> {
+) {
   const res = await apiClient.post("/bulk-snapshot", {
     recording_ids: recordingIds,
     master_id: masterId,

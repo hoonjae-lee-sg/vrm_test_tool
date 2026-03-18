@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
-import { takeBulkSnapshot, BulkSnapshotResponse } from "@/api/recording";
+import { takeBulkSnapshot } from "@/api/recording";
 import {
   startReceiverCapture,
   stopReceiverCapture,
@@ -90,12 +90,17 @@ export default function MultiSnapshotPage() {
   const takeSingleCapture = useCallback(
     async (ids: string[]) => {
       try {
-        const response: BulkSnapshotResponse = await takeBulkSnapshot(ids);
-        const snapshots = response.snapshots;
+        const raw = await takeBulkSnapshot(ids);
+
+        /* 응답 형식 호환: 새 형식(snapshots 래핑) / 구 형식(flat) 모두 지원 */
+        const snapshots: SnapshotResult =
+          (raw as any).snapshots ?? (raw as unknown as SnapshotResult);
+        const masterId: string | undefined = (raw as any).master_id;
+        const syncWarnings: string[] | undefined = (raw as any).sync_warnings;
+
         if (!snapshots || Object.keys(snapshots).length === 0) return;
 
         /* 마스터 카메라 기준 타임스탬프 추출 */
-        const masterId = response.master_id;
         const firstKey = masterId && snapshots[masterId] ? masterId : Object.keys(snapshots)[0];
         const ts = snapshots[firstKey].actual_timestamp;
         const seconds = parseInt(ts.seconds || "0");
@@ -114,8 +119,8 @@ export default function MultiSnapshotPage() {
             .padStart(3, "0")}`;
 
         /* 동기화 경고 토스트 표시 (첫 1회만) */
-        if (response.sync_warnings && response.sync_warnings.length > 0) {
-          showToast(response.sync_warnings[0], "error");
+        if (syncWarnings && syncWarnings.length > 0) {
+          showToast(syncWarnings[0], "error");
         }
 
         const newItem: HistoryItem = {
@@ -123,8 +128,8 @@ export default function MultiSnapshotPage() {
           displayTime,
           camCount: Object.keys(snapshots).length,
           data: snapshots,
-          masterId: response.master_id,
-          syncWarnings: response.sync_warnings,
+          masterId,
+          syncWarnings,
         };
 
         setHistory((prev) => {
