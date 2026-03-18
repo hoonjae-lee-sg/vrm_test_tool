@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 /*
- * VRM Test Tool 커스텀 테마
- * 기존 Supergate 다크 테마 (style.css) 색상 체계를 Tailwind CSS v4 @theme으로 정의
+ * VRM Test Tool — Mission Control 디자인 시스템
+ * 다크 글래스모피즘 + 네온 상태 글로우 + 도트 그리드 텍스처 + 브리딩 애니메이션
  */
 @theme {
-  /* ── 배경 색상 (기존 style.css 기준) ── */
-  --color-bg-app: #000000;
-  --color-bg-sidebar: #000000;
-  --color-bg-card: #111111;
-  --color-bg-input: #111111;
-  --color-bg-hover: #222222;
+  /* ── 배경 색상 (딥 네이비 기반) ── */
+  --color-bg-app: #0a0e1a;
+  --color-bg-sidebar: #0a0e1a;
+  --color-bg-card: rgba(255, 255, 255, 0.03);
+  --color-bg-input: rgba(255, 255, 255, 0.04);
+  --color-bg-hover: #141a2e;
 
   /* ── 텍스트 색상 (Slate 계열) ── */
   --color-text-primary: #f8fafc;
@@ -18,9 +18,9 @@
   --color-text-muted: #64748b;
   --color-text-accent: #3b82f6;
 
-  /* ── 브랜드 색상 (Supergate Blue) ── */
+  /* ── 브랜드 색상 (Mission Control Blue) ── */
   --color-brand: #3b82f6;
-  --color-brand-hover: #2563eb;
+  --color-brand-hover: #60a5fa;
 
   /* ── 상태 색상 ── */
   --color-status-running: #10b981;
@@ -28,36 +28,55 @@
   --color-status-pending: #f59e0b;
   --color-status-stopped: #6b7280;
 
-  /* ── 보더 (Slate 700) ── */
-  --color-border: #334155;
-  --color-border-subtle: #334155;
+  /* ── 보더 (글래스 보더 — 반투명 화이트) ── */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
   --color-border-focus: #3b82f6;
 
-  /* ── 카드 hover ── */
-  --color-card: #111111;
-  --color-card-hover: #1a1a1a;
+  /* ── 카드 (글래스 효과) ── */
+  --color-card: rgba(255, 255, 255, 0.03);
+  --color-card-hover: rgba(255, 255, 255, 0.06);
 
-  /* ── 폰트 ── */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* ── 폰트 — DM Sans 기본, Outfit 디스플레이, JetBrains Mono 코드 ── */
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Outfit", "DM Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
-  /* ── 그림자 ── */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  /* ── 그림자 (다크 테마 최적화) ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-floating: 0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3);
 
   /* ── 애니메이션 ── */
   --animate-fade-in: fade-in 0.3s ease;
   --animate-slide-in: slide-in 0.3s ease-out;
+  --animate-scale-in: scale-in 0.2s ease-out;
+  --animate-breathe: breathe 2s ease-in-out infinite;
+  --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
 }
 
 /* 웹 폰트는 index.html <link> 태그로 로드 (CSS @import 순서 제약 회피) */
 
-/* ── 기본 스타일 ── */
+/* ── font-display 유틸리티 — Outfit 헤딩/숫자용 ── */
+.font-display {
+  font-family: "Outfit", "DM Sans", system-ui, sans-serif;
+}
+
+/* ── HTML 기본 설정 — 부드러운 스크롤 ── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── 기본 스타일 — 딥 네이비 배경 + 도트 그리드 텍스처 ── */
 body {
   margin: 0;
   font-family: var(--font-sans);
   background-color: var(--color-bg-app);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--color-text-primary);
   font-size: 14px;
   line-height: 1.5;
@@ -67,6 +86,25 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+/* ── 글래스 카드 유틸리티 — 반투명 배경 + 블러 + 보더 ── */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ── 글로우 유틸리티 — 브랜드/성공/에러 네온 박스 섀도우 ── */
+.glow-brand {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+.glow-success {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+.glow-error {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
 }
 
 /* ── 입력 필드 공통 포커스 스타일 ── */
@@ -88,10 +126,10 @@ select {
   padding-right: 28px;
 }
 
-/* ── 스크롤바 커스텀 ── */
+/* ── 스크롤바 커스텀 — 네이비 테마 매칭, 얇은 트랙 ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -99,12 +137,12 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ── 키프레임 애니메이션 ── */
@@ -121,4 +159,22 @@ select {
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
   50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
+}
+
+/* 브리딩 애니메이션 — 불투명도 사이클 (상태 인디케이터용) */
+@keyframes breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* 스케일인 애니메이션 — 모달/카드 진입 효과 */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 글로우 펄스 애니메이션 — 네온 박스 섀도우 강도 변화 */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
 }

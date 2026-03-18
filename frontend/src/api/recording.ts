@@ -1,4 +1,5 @@
 import apiClient from "./client";
+import type { Recording } from "@/types/recording";
 
 /**
  * 녹화 관련 API 호출 모듈
@@ -22,9 +23,9 @@ export interface StartRecordingParams {
   notes?: string;
 }
 
-/** 녹화 목록 조회 */
-export async function fetchRecordings() {
-  const res = await apiClient.get("/recordings");
+/** 녹화 목록 조회 — Recording[] 타입 반환 */
+export async function fetchRecordings(): Promise<Recording[]> {
+  const res = await apiClient.get<Recording[]>("/recordings");
   return res.data;
 }
 

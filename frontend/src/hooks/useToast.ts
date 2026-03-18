@@ -11,11 +11,13 @@ export function useToast() {
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const showToast = useCallback(
-    (message: string, type: "success" | "error" | "info" = "info") => {
+    (message: string, type: "success" | "error" | "info" = "info", duration?: number) => {
       /* 이전 타이머 제거 */
       if (timerRef.current) clearTimeout(timerRef.current);
       setToast({ message, type });
-      timerRef.current = setTimeout(() => setToast(null), 3000);
+      /** 표시 시간 — error는 5초, 그 외 3초 기본값 */
+      const ms = duration ?? (type === "error" ? 5000 : 3000);
+      timerRef.current = setTimeout(() => setToast(null), ms);
     },
     []
   );

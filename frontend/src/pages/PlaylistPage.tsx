@@ -8,13 +8,29 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import apiClient from "@/api/client";
+import type { Recording } from "@/types/recording";
+import { PLAYLIST_NUM_CHANNELS, TIMEBAR_CANVAS_WIDTH, VRM_API_PORT } from "@/constants";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 
-/* hls.js 전역 타입 선언 */
-declare const Hls: any;
+/* hls.js CDN 전역 변수 타입 선언 — window.Hls로 로드되는 hls.js 라이브러리 */
+declare const Hls: {
+  isSupported: () => boolean;
+  Events: { MANIFEST_PARSED: string; ERROR: string };
+  new (config: Record<string, unknown>): HlsInstance;
+};
 
-/* ────────────────── 상수 ────────────────── */
-const NUM_CHANNELS = 9;
-const CANVAS_WIDTH = 260;
+/** hls.js 인스턴스 인터페이스 */
+interface HlsInstance {
+  loadSource: (url: string) => void;
+  attachMedia: (video: HTMLVideoElement) => void;
+  destroy: () => void;
+  startPosition: number;
+  on: (event: string, callback: (...args: unknown[]) => void) => void;
+}
+
+/* ────────────────── 상수 (공유 상수 모듈에서 가져온 값의 로컬 별칭) ────────────────── */
+const NUM_CHANNELS = PLAYLIST_NUM_CHANNELS;
+const CANVAS_WIDTH = TIMEBAR_CANVAS_WIDTH;
 
 /* ────────────────── 세그먼트 타입 ────────────────── */
 interface Segment {
@@ -43,8 +59,8 @@ export default function PlaylistPage() {
   /* 세그먼트 데이터 (recordingId → Segment[]) */
   const segmentDataRef = useRef<Record<string, Segment[]>>({});
 
-  /* hls.js 인스턴스 */
-  const hlsInstancesRef = useRef<(any | null)[]>(Array(NUM_CHANNELS).fill(null));
+  /* hls.js 인스턴스 배열 — 채널별 HLS 재생 관리 */
+  const hlsInstancesRef = useRef<(HlsInstance | null)[]>(Array(NUM_CHANNELS).fill(null));
 
   /* 비디오 요소 refs */
   const videoRefs = useRef<(HTMLVideoElement | null)[]>(Array(NUM_CHANNELS).fill(null));
@@ -69,7 +85,7 @@ export default function PlaylistPage() {
         setStatusMsg("Fetching recordings list...");
         const res = await apiClient.get("/recordings");
         const data = Array.isArray(res.data) ? res.data : [];
-        const ids = data.map((r: any) => r.recording_id);
+        const ids = data.map((r: Recording) => r.recording_id);
         setRecordingList(ids);
         setStatusMsg(ids.length > 0 ? `Found ${ids.length} recordings.` : "No recordings found.");
       } catch {
@@ -130,8 +146,10 @@ export default function PlaylistPage() {
         video.play().catch(() => {});
       });
 
-      hls.on(Hls.Events.ERROR, (_: any, data: any) => {
-        if (data.fatal) console.error(`CH ${channelIndex + 1} Fatal:`, data.details);
+      hls.on(Hls.Events.ERROR, (_: unknown, data: unknown) => {
+        /* hls.js 에러 데이터 구조 — fatal 여부 및 상세 정보 */
+        const errData = data as { fatal?: boolean; details?: string };
+        if (errData.fatal) console.error(`CH ${channelIndex + 1} Fatal:`, errData.details);
       });
     },
     []
@@ -177,7 +195,8 @@ export default function PlaylistPage() {
           }
         }
 
-        const hlsUrl = `http://${window.location.hostname}:18071/recording/${recId}/playback/master.m3u8`;
+        /* VRM 서버 HLS 재생 URL — 포트 상수 사용 */
+        const hlsUrl = `${window.location.protocol}//${window.location.hostname}:${VRM_API_PORT}/recording/${recId}/playback/master.m3u8`;
         playHls(index, hlsUrl, mediaTime);
       });
     },
@@ -434,8 +453,9 @@ export default function PlaylistPage() {
       {/* ── 메인: 3x3 비디오 그리드 ── */}
       <div className="flex-1 p-2 overflow-hidden">
         <div className="grid grid-cols-3 grid-rows-3 gap-1 h-full">
+          {/* 비디오 그리드 셀 — 글래스 보더 + 라운딩 */}
           {Array.from({ length: NUM_CHANNELS }, (_, i) => (
-            <div key={i} className="relative bg-black rounded overflow-hidden">
+            <div key={i} className="relative bg-black rounded-xl overflow-hidden border border-white/[0.08]">
               {/* 비디오 */}
               <video
                 ref={(el) => { videoRefs.current[i] = el; }}
@@ -493,15 +513,15 @@ export default function PlaylistPage() {
         </div>
       </div>
 
-      {/* ── 우측: 날짜 네비게이터 + 타임바 ── */}
-      <div className="w-72 flex-shrink-0 bg-card border-l border-border flex flex-col">
-        {/* 날짜 네비게이터 */}
-        <div className="flex items-center justify-between p-3 border-b border-border">
+      {/* ── 우측: 날짜 네비게이터 + 타임바 — 글래스모피즘 사이드바 ── */}
+      <div className="w-72 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-l border-white/[0.06] flex flex-col">
+        {/* 날짜 네비게이터 — 글래스 버튼 스타일 */}
+        <div className="flex items-center justify-between p-3 border-b border-white/[0.06]">
           <button
             onClick={() => changeDate(-1)}
-            className="px-2 py-1 text-text-secondary hover:text-text-primary text-sm"
+            className="px-2 py-1 bg-white/[0.05] hover:bg-white/[0.1] rounded-lg text-text-secondary hover:text-text-primary text-sm transition"
           >
-            ◀
+            <ChevronLeftIcon className="w-4 h-4" />
           </button>
           <span className="text-sm font-mono text-text-primary cursor-pointer" onClick={() => {
             const el = document.getElementById("playlist-date-picker") as HTMLInputElement;
@@ -520,14 +540,14 @@ export default function PlaylistPage() {
           />
           <button
             onClick={() => changeDate(1)}
-            className="px-2 py-1 text-text-secondary hover:text-text-primary text-sm"
+            className="px-2 py-1 bg-white/[0.05] hover:bg-white/[0.1] rounded-lg text-text-secondary hover:text-text-primary text-sm transition"
           >
-            ▶
+            <ChevronRightIcon className="w-4 h-4" />
           </button>
         </div>
 
         {/* 상태 바 */}
-        <div className="px-3 py-1 text-[10px] text-text-muted border-b border-border">
+        <div className="px-3 py-1 text-[10px] text-text-muted border-b border-white/[0.06]">
           {statusMsg}
         </div>
 

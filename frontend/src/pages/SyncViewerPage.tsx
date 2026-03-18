@@ -12,28 +12,23 @@ import {
   getSyncFrames,
   getSnapshotImageUrl,
 } from "@/api/snapshot_receiver";
+import type { CameraFrame, SyncGroup, SyncBadge } from "@/types/recording";
+import EmptyState from "@/components/EmptyState";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { formatOffsetMs } from "@/utils/format";
+import {
+  SYNC_VIEWER_PAGE_LIMIT,
+  SYNC_THRESHOLD_PERFECT_MS,
+  SYNC_THRESHOLD_GOOD_MS,
+  SYNC_THRESHOLD_WARN_MS,
+} from "@/constants";
 
-/* ────────────────── 타입 정의 ────────────────── */
-interface CameraFrame {
-  filename: string;
-  diff_ms: number;
-}
-
-interface SyncGroup {
-  timestamp_ms: number;
-  display_time: string;
-  camera_count: number;
-  total_cameras: number;
-  max_diff_ms: number;
-  cameras: Record<string, CameraFrame>;
-}
-
-/* ────────────────── 동기화 상태 배지 색상 판별 ────────────────── */
-function getSyncBadge(diffMs: number): { label: string; color: string } {
-  if (diffMs <= 10) return { label: "PERFECT", color: "text-status-running" };
-  if (diffMs <= 30) return { label: "GOOD", color: "text-brand" };
-  if (diffMs <= 100) return { label: "WARN", color: "text-status-pending" };
-  return { label: "BAD", color: "text-status-error" };
+/* ────────────────── 동기화 상태 배지 색상 판별 — 상수 기반 임계값 비교 ────────────────── */
+function getSyncBadge(diffMs: number): SyncBadge & { glow: string } {
+  if (diffMs <= SYNC_THRESHOLD_PERFECT_MS) return { label: "PERFECT", color: "text-status-running", glow: "drop-shadow-[0_0_6px_rgba(34,197,94,0.5)]" };
+  if (diffMs <= SYNC_THRESHOLD_GOOD_MS) return { label: "GOOD", color: "text-brand", glow: "drop-shadow-[0_0_6px_rgba(59,130,246,0.5)]" };
+  if (diffMs <= SYNC_THRESHOLD_WARN_MS) return { label: "WARN", color: "text-status-pending", glow: "drop-shadow-[0_0_6px_rgba(234,179,8,0.5)]" };
+  return { label: "BAD", color: "text-status-error", glow: "drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]" };
 }
 
 /* ────────────────── 메인 컴포넌트 ────────────────── */
@@ -49,7 +44,7 @@ export default function SyncViewerPage() {
   const [totalGroups, setTotalGroups] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
-  const LIMIT = 50;
+  const LIMIT = SYNC_VIEWER_PAGE_LIMIT;
 
   /* ── 선택된 프레임 ── */
   const [selectedTs, setSelectedTs] = useState<number | null>(null);
@@ -112,12 +107,12 @@ export default function SyncViewerPage() {
   const availableHours = selectedDate ? dates[selectedDate] || [] : [];
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
-      {/* ══════════ 좌측: 날짜/시간 선택 + 프레임 타임라인 ══════════ */}
-      <div className="w-72 flex-shrink-0 bg-card border-r border-border flex flex-col">
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+      {/* ══════════ 좌측: 날짜/시간 선택 + 프레임 타임라인 — 글래스모피즘 사이드바 ══════════ */}
+      <div className="w-72 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] flex flex-col">
         {/* 헤더 */}
-        <div className="p-4 border-b border-border">
-          <h2 className="text-sm font-bold text-text-primary mb-3">
+        <div className="p-4 border-b border-white/[0.06]">
+          <h2 className="text-sm font-bold font-display text-text-primary mb-3">
             Sync Viewer
           </h2>
 
@@ -190,7 +185,7 @@ export default function SyncViewerPage() {
                   className={`px-3 py-2 rounded cursor-pointer transition text-xs flex items-center justify-between ${
                     isSelected
                       ? "bg-brand/10 border border-brand"
-                      : "bg-bg-app border border-transparent hover:border-border"
+                      : "bg-bg-app border border-transparent hover:border-white/[0.06]"
                   }`}
                 >
                   <div>
@@ -205,7 +200,8 @@ export default function SyncViewerPage() {
                     <span className="font-mono text-[10px] text-text-muted">
                       {group.max_diff_ms}ms
                     </span>
-                    <span className={`text-[9px] font-bold ${badge.color}`}>
+                    {/* 동기화 상태 배지 — 네온 글로우 효과 */}
+                    <span className={`text-[9px] font-bold ${badge.color} ${badge.glow}`}>
                       {badge.label}
                     </span>
                   </div>
@@ -256,7 +252,7 @@ export default function SyncViewerPage() {
             {/* 상단 요약 바 */}
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-lg font-bold text-text-primary font-mono">
+                <h2 className="text-lg font-bold font-display text-text-primary">
                   {selectedGroup.display_time}
                 </h2>
                 <p className="text-xs text-text-muted">
@@ -272,9 +268,9 @@ export default function SyncViewerPage() {
                     Max Diff
                   </p>
                   <p
-                    className={`text-lg font-bold font-mono ${
+                    className={`text-lg font-bold font-display font-mono ${
                       getSyncBadge(selectedGroup.max_diff_ms).color
-                    }`}
+                    } ${getSyncBadge(selectedGroup.max_diff_ms).glow}`}
                   >
                     {selectedGroup.max_diff_ms}ms
                   </p>
@@ -296,12 +292,13 @@ export default function SyncViewerPage() {
                 const hasMissing = !frame;
 
                 return (
+                  /* 이미지 카드 — 글래스 보더 + 라운딩 */
                   <div
                     key={camId}
-                    className={`rounded-lg border overflow-hidden relative ${
+                    className={`rounded-xl border overflow-hidden relative ${
                       hasMissing
                         ? "border-status-error/50 bg-status-error/5"
-                        : "border-border bg-black"
+                        : "border-white/[0.08] bg-black"
                     }`}
                   >
                     {/* 카메라 ID 오버레이 */}
@@ -322,8 +319,7 @@ export default function SyncViewerPage() {
                                 : "bg-status-error/20 text-status-error"
                         }`}
                       >
-                        {frame.diff_ms >= 0 ? "+" : ""}
-                        {frame.diff_ms}ms
+                        {formatOffsetMs(frame.diff_ms)}
                       </div>
                     )}
 
@@ -359,10 +355,11 @@ export default function SyncViewerPage() {
             </div>
 
             {/* 동기화 오차 상세 테이블 */}
-            <div className="mt-6 border border-border rounded-lg overflow-hidden">
+            {/* 동기화 오차 상세 테이블 — 글래스 보더 */}
+            <div className="mt-6 border border-white/[0.06] rounded-xl overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-bg-card border-b border-border">
+                  <tr className="bg-bg-card border-b border-white/[0.06]">
                     <th className="px-3 py-2 text-left text-text-muted font-medium">
                       Camera
                     </th>
@@ -384,7 +381,7 @@ export default function SyncViewerPage() {
                       return (
                         <tr
                           key={camId}
-                          className="border-b border-border/50 bg-status-error/5"
+                          className="border-b border-white/[0.06] bg-status-error/5"
                         >
                           <td className="px-3 py-1.5 font-mono text-text-primary">
                             {camId}
@@ -405,7 +402,8 @@ export default function SyncViewerPage() {
                     }
                     const badge = getSyncBadge(Math.abs(frame.diff_ms));
                     return (
-                      <tr key={camId} className="border-b border-border/50">
+                      /* 테이블 행 — 짝수행 글래스 배경 + 글로우 배지 */
+                      <tr key={camId} className="border-b border-white/[0.06] even:bg-white/[0.02]">
                         <td className="px-3 py-1.5 font-mono text-text-primary">
                           {camId}
                         </td>
@@ -413,13 +411,12 @@ export default function SyncViewerPage() {
                           {frame.filename}
                         </td>
                         <td
-                          className={`px-3 py-1.5 text-right font-mono font-bold ${badge.color}`}
+                          className={`px-3 py-1.5 text-right font-mono font-bold ${badge.color} ${badge.glow}`}
                         >
-                          {frame.diff_ms >= 0 ? "+" : ""}
-                          {frame.diff_ms}
+                          {formatOffsetMs(frame.diff_ms)}
                         </td>
                         <td className="px-3 py-1.5 text-center">
-                          <span className={`font-bold ${badge.color}`}>
+                          <span className={`font-bold ${badge.color} ${badge.glow}`}>
                             {badge.label}
                           </span>
                         </td>
@@ -430,11 +427,15 @@ export default function SyncViewerPage() {
               </table>
             </div>
           </>
+        ) : Object.keys(dates).length === 0 ? (
+          <EmptyState
+            icon={<MagnifyingGlassIcon className="w-12 h-12 text-text-muted/40" />}
+            message="저장된 스냅샷 데이터가 없습니다"
+            description="Server Mode로 캡처를 먼저 실행하세요"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-text-muted text-sm">
-            {Object.keys(dates).length === 0
-              ? "저장된 스냅샷 데이터가 없습니다. Server Mode로 캡처를 먼저 실행하세요."
-              : "좌측에서 날짜/시간을 선택하고 프레임을 클릭하세요."}
+            좌측에서 날짜/시간을 선택하고 프레임을 클릭하세요.
           </div>
         )}
       </div>

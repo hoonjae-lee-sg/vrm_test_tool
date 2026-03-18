@@ -9,41 +9,36 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
-import { takeBulkSnapshot } from "@/api/recording";
+import { takeBulkSnapshot, type BulkSnapshotResponse } from "@/api/recording";
 import {
   startReceiverCapture,
   stopReceiverCapture,
   getReceiverStatus,
 } from "@/api/snapshot_receiver";
+import type { Recording, SnapshotResult, HistoryItem } from "@/types/recording";
+import {
+  DEFAULT_REFRESH_INTERVAL_MS,
+  MAX_SNAPSHOT_HISTORY,
+  DEFAULT_CAPTURE_FPS,
+  MAX_CAPTURE_FPS,
+  MIN_CAPTURE_INTERVAL_MS,
+  MAX_CAPTURE_INTERVAL_MS,
+  RECEIVER_STATUS_POLL_INTERVAL_MS,
+} from "@/constants";
 import Toast from "@/components/Toast";
-
-/* ────────────────── 타입 정의 ────────────────── */
-interface SnapshotResult {
-  [recordingId: string]: {
-    actual_timestamp: { seconds: string; nanos: string };
-    image_data: string;
-    is_pts_synced?: boolean;
-    auto_sync_offset_ms?: number;
-  };
-}
-
-interface HistoryItem {
-  timeKey: string;
-  displayTime: string;
-  camCount: number;
-  data: SnapshotResult;
-  masterId?: string;
-  syncWarnings?: string[];
-}
+import Button from "@/components/Button";
+import EmptyState from "@/components/EmptyState";
+import { CameraIcon, PhotoIcon } from "@heroicons/react/24/outline";
+import { formatNumber } from "@/utils/format";
 
 /* ────────────────── 메인 컴포넌트 ────────────────── */
 export default function MultiSnapshotPage() {
-  const { recordings } = useRecordings(3000);
+  const { recordings } = useRecordings(DEFAULT_REFRESH_INTERVAL_MS);
   const { toast, showToast } = useToast();
 
   /* RUNNING 상태 녹화만 필터 */
   const runningRecordings = recordings.filter(
-    (r: any) => r.state === "RUNNING" || r.state === 2
+    (r: Recording) => r.state === "RUNNING" || r.state === 2
   );
 
   /* 선택된 채널 ID 목록 */
@@ -55,7 +50,12 @@ export default function MultiSnapshotPage() {
 
   /* ── 서버 모드 (Snapshot Receiver) 상태 ── */
   const [serverMode, setServerMode] = useState(false);
-  const [serverStatus, setServerStatus] = useState<any>(null);
+  /* Snapshot Receiver 상태 응답 타입 */
+  const [serverStatus, setServerStatus] = useState<{
+    session?: { total_captured: number; total_dropped: number; capture_rate: number };
+    writer?: { total_saved: number };
+    queue?: { current_size: number; max_size: number };
+  } | null>(null);
   const serverPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* 히스토리 */
@@ -63,13 +63,13 @@ export default function MultiSnapshotPage() {
   const [activeTimeKey, setActiveTimeKey] = useState<string | null>(null);
   const historyRef = useRef(new Set<string>()); // 중복 방지용
 
-  /* 최대 히스토리 항목 수 */
-  const MAX_HISTORY = 100;
+  /* 최대 히스토리 항목 수 — 상수 모듈에서 가져온 값 */
+  const MAX_HISTORY = MAX_SNAPSHOT_HISTORY;
 
   /* ── 전체 선택 토글 ── */
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      const allIds = new Set(runningRecordings.map((r: any) => r.recording_id));
+      const allIds = new Set(runningRecordings.map((r: Recording) => r.recording_id));
       setSelectedIds(allIds);
     } else {
       setSelectedIds(new Set());
@@ -92,11 +92,12 @@ export default function MultiSnapshotPage() {
       try {
         const raw = await takeBulkSnapshot(ids);
 
-        /* 응답 형식 호환: 새 형식(snapshots 래핑) / 구 형식(flat) 모두 지원 */
+        /* 응답 형식 호환: 새 형식(BulkSnapshotResponse 래핑) / 구 형식(flat) 모두 지원 */
+        const typed = raw as Partial<BulkSnapshotResponse> & SnapshotResult;
         const snapshots: SnapshotResult =
-          (raw as any).snapshots ?? (raw as unknown as SnapshotResult);
-        const masterId: string | undefined = (raw as any).master_id;
-        const syncWarnings: string[] | undefined = (raw as any).sync_warnings;
+          typed.snapshots ?? (raw as unknown as SnapshotResult);
+        const masterId: string | undefined = typed.master_id;
+        const syncWarnings: string[] | undefined = typed.sync_warnings;
 
         if (!snapshots || Object.keys(snapshots).length === 0) return;
 
@@ -144,8 +145,10 @@ export default function MultiSnapshotPage() {
 
         /* 캡처 중이면 최신 항목 자동 선택 */
         setActiveTimeKey(timeKey);
-      } catch (err: any) {
-        if (err.response?.status === 404) {
+      } catch (err: unknown) {
+        /* axios 에러 응답에서 status 코드 추출 */
+        const axiosErr = err as { response?: { status?: number } };
+        if (axiosErr.response?.status === 404) {
           showToast("동기화가 끊어졌습니다. 캡처를 중지합니다.", "error");
           stopCapture();
         }
@@ -157,16 +160,16 @@ export default function MultiSnapshotPage() {
   /* ── 선택된 채널 중 가장 낮은 FPS 기반으로 캡처 인터벌 계산 ── */
   const calculateCaptureInterval = useCallback(
     (ids: string[]): number => {
-      const selectedRecs = runningRecordings.filter((r: any) =>
+      const selectedRecs = runningRecordings.filter((r: Recording) =>
         ids.includes(r.recording_id)
       );
-      /* jitter.recent_fps 값 수집, 없으면 기본 15fps 사용, 상한 30fps */
+      /* jitter.recent_fps 값 수집, 없으면 기본 FPS 사용, 상한 FPS 적용 */
       const minFps = Math.min(
-        ...selectedRecs.map((r: any) => r.jitter?.recent_fps || 15),
-        30
+        ...selectedRecs.map((r: Recording) => r.jitter?.recent_fps || DEFAULT_CAPTURE_FPS),
+        MAX_CAPTURE_FPS
       );
-      /* 최소 50ms (20fps), 최대 2000ms (0.5fps) */
-      return Math.max(50, Math.min(2000, Math.floor(1000 / minFps)));
+      /* 캡처 인터벌 범위 제한 (MIN~MAX ms) */
+      return Math.max(MIN_CAPTURE_INTERVAL_MS, Math.min(MAX_CAPTURE_INTERVAL_MS, Math.floor(1000 / minFps)));
     },
     [runningRecordings]
   );
@@ -188,7 +191,7 @@ export default function MultiSnapshotPage() {
           `서버 캡처 시작: ${ids.length}ch × ${result.fps}fps (${result.interval_ms}ms)`,
           "success"
         );
-        /* 상태 폴링 시작 (1초 간격) */
+        /* 상태 폴링 시작 — RECEIVER_STATUS_POLL_INTERVAL_MS 간격 */
         serverPollRef.current = setInterval(async () => {
           try {
             const status = await getReceiverStatus();
@@ -196,9 +199,11 @@ export default function MultiSnapshotPage() {
           } catch {
             /* 폴링 에러 무시 */
           }
-        }, 1000);
-      } catch (err: any) {
-        const detail = err.response?.data?.detail || err.message;
+        }, RECEIVER_STATUS_POLL_INTERVAL_MS);
+      } catch (err: unknown) {
+        /* axios 에러 응답에서 상세 메시지 추출 */
+        const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+        const detail = axiosErr.response?.data?.detail || axiosErr.message || "알 수 없는 오류";
         showToast(`서버 캡처 시작 실패: ${detail}`, "error");
       }
       return;
@@ -254,10 +259,10 @@ export default function MultiSnapshotPage() {
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
-      {/* ── 좌측: 채널 선택 ── */}
-      <div className="w-64 flex-shrink-0 bg-card border-r border-border flex flex-col">
-        <div className="p-4 border-b border-border">
-          <h2 className="text-sm font-bold text-text-primary mb-3">Channels</h2>
+      {/* ── 좌측: 채널 선택 — 글래스모피즘 사이드바 ── */}
+      <div className="w-64 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] flex flex-col">
+        <div className="p-4 border-b border-white/[0.06]">
+          <h2 className="text-sm font-bold font-display text-text-primary mb-3">Channels</h2>
 
           {/* 전체 선택 */}
           <label className="flex items-center gap-2 mb-3 text-xs text-text-secondary cursor-pointer">
@@ -274,9 +279,9 @@ export default function MultiSnapshotPage() {
           {/* 채널 목록 */}
           <div className="space-y-1 max-h-60 overflow-y-auto">
             {runningRecordings.length === 0 ? (
-              <p className="text-xs text-text-muted">활성 카메라가 없습니다.</p>
+              <EmptyState icon={<CameraIcon className="w-10 h-10 text-text-muted/40" />} message="활성 카메라가 없습니다" />
             ) : (
-              runningRecordings.map((rec: any) => (
+              runningRecordings.map((rec: Recording) => (
                 <label
                   key={rec.recording_id}
                   className="flex items-center gap-2 p-2 bg-bg-app border border-border rounded text-xs cursor-pointer hover:border-brand/50 transition"
@@ -330,23 +335,23 @@ export default function MultiSnapshotPage() {
 
         {/* ── 서버 상태 표시 (서버 모드 + 캡처 중일 때) ── */}
         {serverMode && isCapturing && serverStatus?.session && (
-          <div className="px-4 py-2 text-[10px] space-y-1 border-t border-border">
+          <div className="px-4 py-2 text-[10px] space-y-1 border-t border-white/[0.06]">
             <div className="flex justify-between text-text-secondary">
               <span>캡처</span>
               <span className="font-mono text-text-primary">
-                {serverStatus.session.total_captured}장
+                {formatNumber(serverStatus.session.total_captured)}장
               </span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>저장</span>
               <span className="font-mono text-status-running">
-                {serverStatus.writer?.total_saved ?? 0}장
+                {formatNumber(serverStatus.writer?.total_saved ?? 0)}장
               </span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>드롭</span>
               <span className="font-mono text-status-error">
-                {serverStatus.session.total_dropped}장
+                {formatNumber(serverStatus.session.total_dropped)}장
               </span>
             </div>
             <div className="flex justify-between text-text-secondary">
@@ -367,28 +372,32 @@ export default function MultiSnapshotPage() {
         {/* 캡처 제어 버튼 */}
         <div className="p-4">
           {!isCapturing ? (
-            <button
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full"
               onClick={startCapture}
               disabled={selectedIds.size === 0}
-              className="w-full px-4 py-2 bg-brand text-white rounded-lg font-semibold text-sm hover:bg-brand/80 transition disabled:opacity-50"
             >
               {serverMode ? "Start Server Capture" : "Start Capture"}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
+              variant="destructive"
+              size="md"
+              className="w-full"
               onClick={stopCapture}
-              className="w-full px-4 py-2 bg-status-error text-white rounded-lg font-semibold text-sm hover:bg-status-error/80 transition"
             >
               Stop Capture
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
-      {/* ── 중앙: 히스토리 목록 ── */}
-      <div className="w-56 flex-shrink-0 bg-card border-r border-border flex flex-col">
-        <div className="p-3 border-b border-border">
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider">
+      {/* ── 중앙: 히스토리 목록 — 글래스모피즘 패널 ── */}
+      <div className="w-56 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] flex flex-col">
+        <div className="p-3 border-b border-white/[0.06]">
+          <h3 className="text-xs font-bold font-display text-text-muted uppercase tracking-wider">
             Capture History
           </h3>
         </div>
@@ -404,10 +413,11 @@ export default function MultiSnapshotPage() {
                   /* 클릭 시 캡처 중지 */
                   if (isCapturing) stopCapture();
                 }}
-                className={`p-2.5 rounded-lg cursor-pointer transition text-xs ${
+                /* 히스토리 항목 — 활성 시 네온 글로우 보더, 비활성 시 호버 효과 */
+                className={`p-2.5 rounded-lg cursor-pointer transition-all duration-150 text-xs hover:-translate-x-0.5 ${
                   activeTimeKey === item.timeKey
-                    ? "bg-brand/10 border border-brand text-white"
-                    : "bg-bg-app border border-border text-text-secondary hover:border-brand/30"
+                    ? "bg-brand/10 border border-brand/40 text-white shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                    : "bg-bg-app border border-white/[0.06] text-text-secondary hover:bg-white/[0.04] hover:border-brand/30"
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -425,7 +435,7 @@ export default function MultiSnapshotPage() {
         {activeItem ? (
           <>
             <div className="mb-4">
-              <h2 className="text-lg font-bold text-text-primary">{activeItem.displayTime}</h2>
+              <h2 className="text-lg font-bold font-display text-text-primary">{activeItem.displayTime}</h2>
               <p className="text-xs text-text-muted">
                 Channels: {activeItem.camCount}
               </p>
@@ -440,23 +450,26 @@ export default function MultiSnapshotPage() {
             )}
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {Object.entries(activeItem.data).map(([rid, snap]) => (
+                /* 스냅샷 이미지 카드 — 글래스 보더 + 동기화 실패 시 에러 보더 */
                 <div
                   key={rid}
-                  className={`bg-black rounded-lg border overflow-hidden relative ${
-                    snap.is_pts_synced === false ? "border-status-error/50" : "border-border"
+                  className={`bg-black rounded-xl border overflow-hidden relative ${
+                    snap.is_pts_synced === false ? "border-status-error/50" : "border-white/[0.08]"
                   }`}
                 >
                   <div className="absolute top-1.5 left-1.5 flex items-center gap-1 z-10">
                     <span className="bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
                       {rid}
                     </span>
+                    {/* MASTER 배지 — 브랜드 네온 글로우 */}
                     {rid === activeItem.masterId && (
-                      <span className="bg-brand/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                      <span className="bg-brand/80 text-white text-[9px] px-1 py-0.5 rounded font-bold shadow-[0_0_8px_rgba(59,130,246,0.4)]">
                         MASTER
                       </span>
                     )}
+                    {/* NO SYNC 배지 — 에러 네온 글로우 */}
                     {snap.is_pts_synced === false && (
-                      <span className="bg-status-error/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                      <span className="bg-status-error/80 text-white text-[9px] px-1 py-0.5 rounded font-bold shadow-[0_0_8px_rgba(239,68,68,0.4)]">
                         NO SYNC
                       </span>
                     )}
@@ -471,9 +484,7 @@ export default function MultiSnapshotPage() {
             </div>
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-text-muted text-sm">
-            캡처를 시작하거나 히스토리에서 항목을 선택하세요.
-          </div>
+          <EmptyState icon={<PhotoIcon className="w-12 h-12 text-text-muted/40" />} message="캡처를 시작하거나 히스토리에서 항목을 선택하세요" />
         )}
       </div>
 
