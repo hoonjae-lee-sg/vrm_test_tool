@@ -98,7 +98,7 @@ export default function TesterPage() {
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
       {/* ── 좌측: API 메뉴 사이드바 — 글래스모피즘 배경 ── */}
-      <div className="w-48 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] overflow-y-auto">
+      <div className="w-56 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] overflow-y-auto">
         <div className="p-3">
           <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
             API Methods
@@ -125,8 +125,9 @@ export default function TesterPage() {
         </div>
       </div>
 
-      {/* ── 중앙: 선택된 API 폼 패널 ── */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* ── 중앙: 선택된 API 폼 패널 — max-w 제한으로 과도한 확장 방지 ── */}
+      <div className="flex-1 min-w-0 overflow-y-auto p-6 flex justify-center">
+      <div className="w-full max-w-2xl">
         {activePanel === "start" && (
           <StartPanel addLog={addLog} showToast={showToast} refresh={refresh} />
         )}
@@ -192,6 +193,7 @@ export default function TesterPage() {
             addLog={addLog}
           />
         )}
+      </div>
       </div>
 
       {/* ── 우측: Response 로그 뷰어 ── */}

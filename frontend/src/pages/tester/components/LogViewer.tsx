@@ -42,7 +42,7 @@ export default function LogViewer({ logs, onClear }: LogViewerProps) {
 
   return (
     /* 로그 패널 — 터미널 스타일 (다크 배경 + 모노 폰트) */
-    <div className="w-80 flex-shrink-0 bg-black/40 border-l border-white/[0.06] flex flex-col">
+    <div className="w-[28rem] flex-shrink-0 bg-black/40 border-l border-white/[0.06] flex flex-col">
       {/* 헤더 — 제목 및 초기화 버튼 */}
       <div className="flex items-center justify-between p-3 border-b border-white/[0.06]">
         <h3 className="text-xs font-bold font-mono text-text-muted uppercase tracking-wider">

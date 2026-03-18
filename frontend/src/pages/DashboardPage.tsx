@@ -5,7 +5,7 @@
  * - mpegts.js 라이브 프리뷰 (SQ 스트림)
  * - 녹화 시작 모달 (프리셋 지원)
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
 import { startRecording, restartRecording, takeSnapshot, type StartRecordingParams } from "@/api/recording";
@@ -43,6 +43,17 @@ const loadPresets = (): Preset[] =>
 /** localStorage에 프리셋 목록 저장 */
 const savePresets = (presets: Preset[]) =>
   localStorage.setItem("vrm_favorites", JSON.stringify(presets));
+
+/* ────────────────── 카메라 그리드 드래그 순서 관리 ────────────────── */
+const CAMERA_ORDER_KEY = "vrm_camera_order";
+
+/** localStorage에서 카메라 그리드 순서 로드 */
+const loadCameraOrder = (): string[] =>
+  JSON.parse(localStorage.getItem(CAMERA_ORDER_KEY) || "[]");
+
+/** localStorage에 카메라 그리드 순서 저장 */
+const saveCameraOrder = (order: string[]) =>
+  localStorage.setItem(CAMERA_ORDER_KEY, JSON.stringify(order));
 
 /* ────────────────── 녹화 시작 모달 폼 초기값 ────────────────── */
 interface ModalFormData {
@@ -95,6 +106,101 @@ export default function DashboardPage() {
   /* 프리셋 드로어 상태 */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [presets, setPresets] = useState<Preset[]>(loadPresets());
+
+  /* ── 카메라 그리드 드래그 재정렬 ── */
+  const [cameraOrder, setCameraOrder] = useState<string[]>(loadCameraOrder);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  /** 드래그 중 화면 가장자리 자동 스크롤용 RAF ID */
+  const autoScrollRaf = useRef<number | null>(null);
+  /** 현재 드래그 마우스 Y 좌표 */
+  const dragClientY = useRef<number>(0);
+
+  /** localStorage 순서 맵 기반 정렬 — API 갱신과 독립적으로 순서 유지 */
+  const sortedRecordings = useMemo(() => {
+    if (cameraOrder.length === 0) return recordings;
+    const orderMap = new Map(cameraOrder.map((id, i) => [id, i]));
+    return [...recordings].sort((a, b) => {
+      const ai = orderMap.get(a.recording_id) ?? Infinity;
+      const bi = orderMap.get(b.recording_id) ?? Infinity;
+      return ai - bi;
+    });
+  }, [recordings, cameraOrder]);
+
+  /** 드래그 중 화면 상/하단 가장자리 자동 스크롤 루프
+   *  Layout의 <main class="overflow-y-auto"> 가 실제 스크롤 컨테이너이므로
+   *  window.scrollBy 대신 해당 엘리먼트를 직접 스크롤 */
+  const startAutoScroll = useCallback(() => {
+    const EDGE = 80;     // 가장자리 감지 영역 (px)
+    const SPEED = 12;    // 스크롤 속도 (px/frame)
+
+    const tick = () => {
+      const y = dragClientY.current;
+      const vh = window.innerHeight;
+      // Layout의 <main> 엘리먼트 탐색 (overflow-y-auto 스크롤 컨테이너)
+      const scrollContainer = document.querySelector("main") || document.scrollingElement || document.documentElement;
+      if (y < EDGE) {
+        scrollContainer.scrollTop -= SPEED;
+      } else if (y > vh - EDGE) {
+        scrollContainer.scrollTop += SPEED;
+      }
+      autoScrollRaf.current = requestAnimationFrame(tick);
+    };
+    autoScrollRaf.current = requestAnimationFrame(tick);
+  }, []);
+
+  /** 자동 스크롤 중지 */
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRaf.current !== null) {
+      cancelAnimationFrame(autoScrollRaf.current);
+      autoScrollRaf.current = null;
+    }
+  }, []);
+
+  /** 드래그 시작 — document drag 이벤트로 Y 좌표 추적 + 자동 스크롤 시작 */
+  const handleDragStart = (idx: number, e: React.DragEvent) => {
+    setDragIdx(idx);
+    dragClientY.current = e.clientY;
+    // document 레벨 drag 이벤트: 카드 밖 빈 공간에서도 Y 좌표 갱신
+    const onDrag = (ev: DragEvent) => { if (ev.clientY > 0) dragClientY.current = ev.clientY; };
+    document.addEventListener("drag", onDrag);
+    // dragend 시 자동 정리
+    const cleanup = () => { document.removeEventListener("drag", onDrag); document.removeEventListener("dragend", cleanup); };
+    document.addEventListener("dragend", cleanup);
+    startAutoScroll();
+  };
+
+  /** 드래그 오버 — 드롭 대상 위치 표시 */
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setDragOverIdx(idx);
+  };
+
+  /** 드롭 — 순서 변경 후 localStorage 저장 */
+  const handleDrop = (idx: number) => {
+    stopAutoScroll();
+    if (dragIdx === null || dragIdx === idx) return;
+    const newOrder = sortedRecordings.map((r) => r.recording_id);
+    const [moved] = newOrder.splice(dragIdx, 1);
+    newOrder.splice(idx, 0, moved);
+    saveCameraOrder(newOrder);
+    setCameraOrder(newOrder);
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  /** 드래그 종료 — 시각적 상태 + 자동 스크롤 초기화 */
+  const handleDragEnd = () => {
+    stopAutoScroll();
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  /** 그리드 순서 초기화 — API 원래 순서로 복원 */
+  const resetCameraOrder = () => {
+    saveCameraOrder([]);
+    setCameraOrder([]);
+  };
 
   /* 통계 */
   const total = recordings.length;
@@ -200,9 +306,16 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-6">
         {/* 페이지 제목 — Mission Control 디스플레이 폰트 적용 */}
         <h1 className="text-2xl font-bold font-display text-text-primary">Dashboard</h1>
-        <Button variant="primary" size="md" onClick={openModal}>
-          <PlusIcon className="w-4 h-4" /> 녹화 시작
-        </Button>
+        <div className="flex items-center gap-2">
+          {cameraOrder.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={resetCameraOrder}>
+              <ArrowPathIcon className="w-3.5 h-3.5" /> 순서 초기화
+            </Button>
+          )}
+          <Button variant="primary" size="md" onClick={openModal}>
+            <PlusIcon className="w-4 h-4" /> 녹화 시작
+          </Button>
+        </div>
       </div>
 
       {/* ── 통계 카드 — 상단 브랜드 그라데이션 배경 영역 ── */}
@@ -214,7 +327,7 @@ export default function DashboardPage() {
       </div>
       </div>
 
-      {/* ── 카메라 그리드 ── */}
+      {/* ── 카메라 그리드 (드래그 재정렬 지원) ── */}
       {recordings.length === 0 ? (
         <EmptyState
           icon={<VideoCameraIcon className="w-12 h-12 text-text-muted/40" />}
@@ -223,9 +336,19 @@ export default function DashboardPage() {
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {recordings.map((rec: Recording) => (
-            <CameraCard
+          {sortedRecordings.map((rec: Recording, i: number) => (
+            <div
               key={rec.recording_id}
+              draggable
+              onDragStart={(e) => handleDragStart(i, e)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDrop={() => handleDrop(i)}
+              onDragEnd={handleDragEnd}
+              className={`transition-all duration-200 cursor-grab active:cursor-grabbing ${
+                dragOverIdx === i ? "ring-2 ring-brand/50 scale-[0.97] rounded-2xl" : ""
+              } ${dragIdx === i ? "opacity-40" : ""}`}
+            >
+            <CameraCard
               recording={rec}
               showToast={showToast}
               refresh={refresh}
@@ -244,6 +367,7 @@ export default function DashboardPage() {
                 }
               }}
             />
+            </div>
           ))}
         </div>
       )}
