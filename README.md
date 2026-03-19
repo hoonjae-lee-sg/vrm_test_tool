@@ -52,7 +52,30 @@ cd /workspace/vrm_test_tool
 
 ## 실행 방법
 
-VRM 서버(`atfr-video-recorder`)가 실행 중인 상태에서 아래 3개 서버를 각각 실행.
+VRM 서버(`atfr-video-recorder`)가 실행 중인 상태에서 실행.
+
+### 통합 실행 (권장)
+
+```bash
+cd /workspace/vrm_test_tool
+
+# 전체 서비스 한번에 실행 (백엔드 + 프론트엔드 + 스냅샷 서버)
+./start.sh
+
+# proto 동기화 후 실행
+./start.sh --sync-protos
+
+# 옵션 조합 예시
+./start.sh --no-snapshot          # 스냅샷 서버 제외
+./start.sh --only-backend         # 백엔드만 실행
+./start.sh --sync-protos --no-snapshot  # proto 동기화 + 스냅샷 제외
+```
+
+`Ctrl+C`로 전체 서비스 일괄 종료. 로그는 `[backend]` / `[frontend]` / `[snapshot]` 접두사로 색상 구분.
+
+### 개별 실행
+
+각 서비스를 별도 터미널에서 개별 실행할 수도 있음.
 
 ### 1. 백엔드 (FastAPI) — 포트 8100
 
