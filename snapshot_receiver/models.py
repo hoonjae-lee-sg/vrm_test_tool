@@ -81,6 +81,7 @@ class CaptureSession:
     total_failed: int = 0           # gRPC 호출 실패 수
     total_groups: int = 0           # 총 캡처 그룹 수
     total_skipped_bad: int = 0      # BAD 판정(>100ms diff)으로 저장 스킵된 그룹 수
+    total_skipped_stale: int = 0    # STALE 판정(동일 프레임 반복)으로 저장 스킵된 그룹 수
 
     @property
     def capture_rate(self) -> float:

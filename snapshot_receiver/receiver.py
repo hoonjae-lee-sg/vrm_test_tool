@@ -47,6 +47,8 @@ class SnapshotReceiver:
         )
         self._session: Optional[CaptureSession] = None
         self._capture_task: Optional[asyncio.Task] = None
+        # 프레임 갭 완화: 직전 그룹의 채널별 actual_ms (동일 프레임 반복 감지용)
+        self._prev_actual_ms: dict[str, int] = {}
 
     def _ensure_channel(self):
         """gRPC 채널이 없으면 생성 (lazy init)"""
@@ -183,6 +185,13 @@ class SnapshotReceiver:
         if all_timestamps:
             # 최솟값 선택: 가장 느린 카메라 기준으로 모든 채널 버퍼 범위 내 보장
             ref_sec, ref_nano, ref_ms = min(all_timestamps, key=lambda x: x[2])
+            # --- [DIAG-RECV-P1] Phase 1 진단: 각 카메라 actual_ts 분포 ---
+            ts_strs = [f"{ms}" for _, _, ms in all_timestamps]
+            spread_ms = max(all_timestamps, key=lambda x: x[2])[2] - ref_ms
+            logger.debug(
+                "[DIAG-RECV-P1] ref_ms=%d | spread=%dms | all=[%s]",
+                ref_ms, spread_ms, ",".join(ts_strs),
+            )
         else:
             ref_sec = None
             ref_nano = None
@@ -238,6 +247,12 @@ class SnapshotReceiver:
             actual_ms = actual_sec * 1000 + actual_nano // 1_000_000
             diff_ms = actual_ms - ref_ms
 
+            # --- [DIAG-RECV-P2] Phase 2 채널별 진단 ---
+            logger.debug(
+                "[DIAG-RECV-P2] ch=%s | actual=%d | ref=%d | diff=%dms",
+                rid, actual_ms, ref_ms, diff_ms,
+            )
+
             # 진단 데이터: 채널별 diff_ms 기록
             group.per_channel_diff[rid] = diff_ms
 
@@ -268,6 +283,32 @@ class SnapshotReceiver:
             if self._session:
                 self._session.total_skipped_bad += 1
             return group
+
+        # STALE 그룹 감지: 채널별 actual이 직전 그룹과 동일하면 프레임 갭(네트워크 jitter)으로 인한
+        # 동일 프레임 반복 선택. 1채널이라도 stale이면 그룹 전체 저장 스킵 (AI 학습 데이터 품질 보장)
+        if self._prev_actual_ms:
+            stale_channels = []
+            for item in captured_items:
+                prev = self._prev_actual_ms.get(item.recording_id)
+                cur = item.timestamp_sec * 1000 + item.timestamp_nano // 1_000_000 + item.diff_ms
+                if prev is not None and cur == prev:
+                    stale_channels.append(item.recording_id)
+            if stale_channels:
+                logger.info(
+                    f"그룹 {group.group_id} STALE 판정 "
+                    f"({len(stale_channels)}/{len(captured_items)}채널 동일 프레임) — 저장 스킵 "
+                    f"stale={stale_channels}"
+                )
+                if self._session:
+                    self._session.total_skipped_stale += 1
+                return group
+
+        # 현재 그룹의 채널별 actual_ms 저장 (다음 그룹 stale 비교용)
+        self._prev_actual_ms = {}
+        for item in captured_items:
+            self._prev_actual_ms[item.recording_id] = (
+                item.timestamp_sec * 1000 + item.timestamp_nano // 1_000_000 + item.diff_ms
+            )
 
         # ── 전 채널 성공 → 큐에 일괄 적재 ──
         for item in captured_items:
@@ -331,6 +372,8 @@ class SnapshotReceiver:
                         f"캡처={self._session.total_captured}, "
                         f"드롭={self._session.total_dropped}, "
                         f"실패={self._session.total_failed}, "
+                        f"BAD={self._session.total_skipped_bad}, "
+                        f"STALE={self._session.total_skipped_stale}, "
                         f"큐={self._queue.qsize()}/{self._queue.maxsize}"
                     )
 
