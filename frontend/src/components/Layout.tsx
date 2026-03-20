@@ -7,6 +7,7 @@ import {
   CameraIcon,
   ArrowsPointingInIcon,
 } from "@heroicons/react/24/outline";
+import SpaceBackground from "./SpaceBackground";
 
 /**
  * 공통 레이아웃 — 상단 헤더 네비게이션 + 콘텐츠 영역
@@ -82,8 +83,11 @@ export default function Layout() {
       </header>
 
       {/* 메인 콘텐츠 영역 — 각 페이지가 Outlet으로 렌더링됨 */}
-      <main className="flex-1 overflow-y-auto bg-bg-app">
-        <Outlet />
+      <main className="flex-1 overflow-y-auto bg-bg-app relative">
+        <SpaceBackground />
+        <div className="relative z-10">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
