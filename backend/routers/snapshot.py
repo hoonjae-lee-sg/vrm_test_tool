@@ -114,6 +114,13 @@ async def take_bulk_snapshot(
                     master_pts_synced = is_synced
                     results[rid] = _build_snapshot_result(f)
 
+                    # --- [DIAG-BULK-MASTER] 마스터 스냅샷 진단 ---
+                    logger.debug(
+                        "[DIAG-BULK-MASTER] master=%s actual_ts=%d.%09d pts_synced=%s offset=%dms",
+                        rid, sync_ts_obj.seconds, sync_ts_obj.nanos, is_synced,
+                        getattr(f, "auto_sync_offset_ms", 0),
+                    )
+
                     if not is_synced:
                         logger.warning(
                             "[BulkSnapshot] Master %s is NOT PTS-synced (forced by master_id)", rid
@@ -138,6 +145,15 @@ async def take_bulk_snapshot(
                     strategy=4,
                 )
                 if r.WhichOneof("result") == "file" and r.file.image_data:
+                    # --- [DIAG-BULK-SLAVE] 슬레이브 응답 진단 ---
+                    slave_ts = r.file.actual_timestamp
+                    diff_ms = (slave_ts.seconds * 1000 + slave_ts.nanos // 1_000_000) - \
+                              (sync_ts_obj.seconds * 1000 + sync_ts_obj.nanos // 1_000_000)
+                    logger.debug(
+                        "[DIAG-BULK-SLAVE] slave=%s actual=%d.%09d diff_from_master=%dms pts_synced=%s",
+                        rid, slave_ts.seconds, slave_ts.nanos, diff_ms,
+                        getattr(r.file, "is_pts_synced", True),
+                    )
                     return rid, _build_snapshot_result(r.file)
             except Exception:
                 pass

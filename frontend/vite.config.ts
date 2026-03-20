@@ -29,6 +29,15 @@ export default defineConfig({
         target: "http://localhost:8200",
         changeOrigin: true,
       },
+      /* VRM 서버 HLS 재생 프록시 — Docker 환경에서 직접 포트 접근 불가하므로 프록시 경유 */
+      "/recording": {
+        target: "http://localhost:18071",
+        changeOrigin: true,
+      },
+      "/static/hls": {
+        target: "http://localhost:18071",
+        changeOrigin: true,
+      },
     },
   },
 });

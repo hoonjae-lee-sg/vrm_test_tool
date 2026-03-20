@@ -7,26 +7,11 @@
  * - 타임바: 줌, 드래그 스크롤, 클릭으로 시간 이동
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import Hls from "hls.js";
 import apiClient from "@/api/client";
 import type { Recording } from "@/types/recording";
-import { PLAYLIST_NUM_CHANNELS, TIMEBAR_CANVAS_WIDTH, VRM_API_PORT } from "@/constants";
+import { PLAYLIST_NUM_CHANNELS, TIMEBAR_CANVAS_WIDTH } from "@/constants";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
-
-/* hls.js CDN 전역 변수 타입 선언 — window.Hls로 로드되는 hls.js 라이브러리 */
-declare const Hls: {
-  isSupported: () => boolean;
-  Events: { MANIFEST_PARSED: string; ERROR: string };
-  new (config: Record<string, unknown>): HlsInstance;
-};
-
-/** hls.js 인스턴스 인터페이스 */
-interface HlsInstance {
-  loadSource: (url: string) => void;
-  attachMedia: (video: HTMLVideoElement) => void;
-  destroy: () => void;
-  startPosition: number;
-  on: (event: string, callback: (...args: unknown[]) => void) => void;
-}
 
 /* ────────────────── 상수 (공유 상수 모듈에서 가져온 값의 로컬 별칭) ────────────────── */
 const NUM_CHANNELS = PLAYLIST_NUM_CHANNELS;
@@ -60,7 +45,7 @@ export default function PlaylistPage() {
   const segmentDataRef = useRef<Record<string, Segment[]>>({});
 
   /* hls.js 인스턴스 배열 — 채널별 HLS 재생 관리 */
-  const hlsInstancesRef = useRef<(HlsInstance | null)[]>(Array(NUM_CHANNELS).fill(null));
+  const hlsInstancesRef = useRef<(Hls | null)[]>(Array(NUM_CHANNELS).fill(null));
 
   /* 비디오 요소 refs */
   const videoRefs = useRef<(HTMLVideoElement | null)[]>(Array(NUM_CHANNELS).fill(null));
@@ -96,13 +81,37 @@ export default function PlaylistPage() {
   }, []);
 
   /* ── 세그먼트 로드 ── */
+  /* VRM 서버의 index.m3u8을 파싱하여 세그먼트 시간 정보 추출 */
   const loadSegments = useCallback(async (recordingId: string) => {
     if (segmentDataRef.current[recordingId]) return;
     try {
-      const res = await apiClient.get(`/recordings/${recordingId}/segments`);
-      segmentDataRef.current[recordingId] = res.data.segments || [];
+      const res = await fetch(`/recording/${recordingId}/playback/index.m3u8`);
+      if (!res.ok) return;
+      const text = await res.text();
+      const segments: Segment[] = [];
+      const lines = text.split("\n");
+      let currentDuration = 0;
+
+      for (const line of lines) {
+        if (line.startsWith("#EXTINF:")) {
+          /* #EXTINF:5.000, 형식에서 duration 추출 */
+          currentDuration = parseFloat(line.substring(8));
+        } else if (line.trim().endsWith(".ts") && !line.startsWith("#")) {
+          /* 세그먼트 경로에서 타임스탬프 파일명 추출
+             예: /static/hls/105/14/1773901878500.ts → 1773901878500 */
+          const filename = line.trim().split("/").pop()?.replace(".ts", "");
+          if (filename) {
+            const startMs = parseInt(filename, 10);
+            if (!isNaN(startMs)) {
+              segments.push({ start: Math.floor(startMs / 1000), duration: currentDuration });
+            }
+          }
+        }
+      }
+
+      segmentDataRef.current[recordingId] = segments;
     } catch (err) {
-      console.error(`Error loading segments for ${recordingId}:`, err);
+      console.warn(`Segments not available for ${recordingId}:`, err);
     }
   }, []);
 
@@ -129,11 +138,11 @@ export default function PlaylistPage() {
   const playHls = useCallback(
     (channelIndex: number, url: string, startTime: number = 0) => {
       const video = videoRefs.current[channelIndex];
-      if (!video || typeof Hls === "undefined" || !Hls.isSupported()) return;
+      if (!video || !Hls.isSupported()) return;
 
       /* 기존 인스턴스 파괴 */
       if (hlsInstancesRef.current[channelIndex]) {
-        hlsInstancesRef.current[channelIndex].destroy();
+        hlsInstancesRef.current[channelIndex]!.destroy();
       }
 
       const hls = new Hls({ debug: false, enableWorker: true, lowLatencyMode: true });
@@ -143,6 +152,8 @@ export default function PlaylistPage() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         video.currentTime = startTime > 0 ? startTime : (hls.startPosition > 0 ? hls.startPosition : 0);
+        /* 브라우저 자동재생 정책: muted 상태에서만 자동재생 허용 */
+        video.muted = true;
         video.play().catch(() => {});
       });
 
@@ -156,47 +167,63 @@ export default function PlaylistPage() {
   );
 
   /* ── 특정 시간에 재생 ── */
+  /* 타임바 클릭 시 해당 시각에 가장 가까운 세그먼트부터 HLS 재생 시작.
+     index.m3u8은 전체 통합 플레이리스트이므로, 클릭 시각 이전까지의
+     세그먼트 duration을 누적하여 HLS 미디어 시간(startTime)을 계산함. */
   const playAt = useCallback(
     (hour: number, minute: number, second: number) => {
       const clickedTimestamp = new Date(currentDate);
       clickedTimestamp.setHours(hour, minute, second, 0);
       const clickedTime = Math.floor(clickedTimestamp.getTime() / 1000);
 
-      /* 날짜 기준 시작 시각 */
-      const hourStart = new Date(currentDate);
-      hourStart.setHours(hour, 0, 0, 0);
-      const hourStartTs = Math.floor(hourStart.getTime() / 1000);
-      const hourEndTs = hourStartTs + 3600;
+      console.log(`[playAt] clickedTime=${clickedTime}, channels=`, channelIds);
 
       channelIds.forEach((recId, index) => {
         if (!recId) return;
 
         const segments = segmentDataRef.current[recId] || [];
-        const validSegment = segments.find(
+        console.log(`[playAt] CH${index} recId=${recId}, segments=${segments.length}`);
+        if (segments.length === 0) return;
+
+        /* 클릭 시각이 세그먼트 범위 내인지 확인 (10초 허용 오차) */
+        const sorted = [...segments].sort((a, b) => a.start - b.start);
+        const firstStart = sorted[0].start;
+        const lastEnd = sorted[sorted.length - 1].start + sorted[sorted.length - 1].duration;
+        if (clickedTime < firstStart - 10 || clickedTime > lastEnd + 10) return;
+
+        /* 클릭 시각에 해당하는 세그먼트 탐색 */
+        let targetIdx = sorted.findIndex(
           (s) => clickedTime >= s.start && clickedTime < s.start + s.duration
         );
-
-        if (!validSegment) return;
-
-        /* HLS 미디어 시간 계산 */
-        const hourSegments = segments
-          .filter((s) => s.start < hourEndTs && s.start + s.duration > hourStartTs)
-          .sort((a, b) => a.start - b.start);
-
-        let mediaTime = 0;
-        for (const seg of hourSegments) {
-          const segStart = Math.max(seg.start, hourStartTs);
-          const segEnd = Math.min(seg.start + seg.duration, hourEndTs);
-          if (clickedTime >= segStart && clickedTime < segEnd) {
-            mediaTime += clickedTime - segStart;
-            break;
-          } else {
-            mediaTime += segEnd - segStart;
+        /* 정확히 세그먼트 안에 없으면 가장 가까운 이전 세그먼트 사용 */
+        if (targetIdx === -1) {
+          for (let i = sorted.length - 1; i >= 0; i--) {
+            if (sorted[i].start <= clickedTime) {
+              targetIdx = i;
+              break;
+            }
           }
         }
+        if (targetIdx === -1) return;
 
-        /* VRM 서버 HLS 재생 URL — 포트 상수 사용 */
-        const hlsUrl = `${window.location.protocol}//${window.location.hostname}:${VRM_API_PORT}/recording/${recId}/playback/master.m3u8`;
+        /* HLS 미디어 시간 계산: 첫 세그먼트부터 클릭 지점까지의 duration 누적 */
+        let mediaTime = 0;
+        for (let i = 0; i < targetIdx; i++) {
+          mediaTime += sorted[i].duration;
+        }
+        /* 클릭이 세그먼트 중간인 경우 오프셋 추가 */
+        const targetSeg = sorted[targetIdx];
+        const offset = Math.max(0, clickedTime - targetSeg.start);
+        mediaTime += Math.min(offset, targetSeg.duration);
+
+        /* 오버레이 닫기 + 즉시 재생 (setTimeout 없이 user gesture 체인 유지) */
+        setOverlayVisible((prev) => {
+          const next = [...prev];
+          next[index] = false;
+          return next;
+        });
+
+        const hlsUrl = `/recording/${recId}/playback/master.m3u8`;
         playHls(index, hlsUrl, mediaTime);
       });
     },
@@ -221,8 +248,9 @@ export default function PlaylistPage() {
     const scrollOffset = scrollOffsetRef.current;
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, TOTAL_HEIGHT);
+    /* 전체 캔버스에 배경색 채우기 — 드래그 시 빈 영역 방지 */
     ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(0, scrollOffset, CANVAS_WIDTH, visibleHeight);
+    ctx.fillRect(0, 0, CANVAS_WIDTH, TOTAL_HEIGHT);
     ctx.save();
     ctx.translate(0, -scrollOffset);
 
@@ -268,7 +296,7 @@ export default function PlaylistPage() {
       }
     }
 
-    /* 채널별 세그먼트 그리기 */
+    /* 채널별 세그먼트 그리기 — 인접 세그먼트를 병합하여 연속 막대로 렌더링 */
     const colors = ["#4caf50", "#2196f3", "#ffc107", "#e91e63", "#9c27b0", "#00bcd4", "#ff9800", "#795548", "#607d8b"];
     const startOfDay = new Date(currentDate);
     startOfDay.setHours(0, 0, 0, 0);
@@ -276,31 +304,36 @@ export default function PlaylistPage() {
     endOfDay.setHours(23, 59, 59, 999);
     const startTs = Math.floor(startOfDay.getTime() / 1000);
     const endTs = Math.floor(endOfDay.getTime() / 1000);
+    const channelWidth = (CANVAS_WIDTH - 80) / NUM_CHANNELS;
 
     channelIds.forEach((recId, index) => {
       if (!recId || !segmentDataRef.current[recId]) return;
 
       ctx.fillStyle = colors[index % colors.length];
-      const daySegments = segmentDataRef.current[recId].filter(
-        (s) => s.start + s.duration > startTs && s.start < endTs
-      );
+      const daySegments = segmentDataRef.current[recId]
+        .filter((s) => s.start + s.duration > startTs && s.start < endTs)
+        .sort((a, b) => a.start - b.start);
 
-      daySegments.forEach((seg) => {
+      /* 인접 세그먼트 병합 (gap < 10초면 연속으로 간주) */
+      const merged: { start: number; end: number }[] = [];
+      for (const seg of daySegments) {
         const segStart = Math.max(seg.start, startTs);
         const segEnd = Math.min(seg.start + seg.duration, endTs);
-        const startPx = ((segStart - startTs) / 60) * PIXELS_PER_MINUTE;
-        const heightPx = ((segEnd - segStart) / 60) * PIXELS_PER_MINUTE;
-        const channelWidth = (CANVAS_WIDTH - 80) / NUM_CHANNELS;
-        const centerX = 80 + channelWidth * index + channelWidth / 2;
-
-        for (let py = Math.floor(startPx); py < Math.floor(startPx + heightPx); py += 2) {
-          if (py >= scrollOffset - 1 && py < scrollOffset + visibleHeight + 1) {
-            const noise = Math.sin(py * 0.1) * Math.cos(py * 0.05);
-            const barWidth = channelWidth * 0.4 + Math.abs(noise) * channelWidth * 0.6;
-            ctx.fillRect(centerX - barWidth / 2, py, barWidth, 1);
-          }
+        if (merged.length > 0 && segStart - merged[merged.length - 1].end < 10) {
+          merged[merged.length - 1].end = segEnd;
+        } else {
+          merged.push({ start: segStart, end: segEnd });
         }
-      });
+      }
+
+      /* 병합된 구간을 직사각형으로 렌더링 */
+      const barX = 80 + channelWidth * index + channelWidth * 0.15;
+      const barW = channelWidth * 0.7;
+      for (const m of merged) {
+        const startPx = ((m.start - startTs) / 60) * PIXELS_PER_MINUTE;
+        const heightPx = Math.max(1, ((m.end - m.start) / 60) * PIXELS_PER_MINUTE);
+        ctx.fillRect(barX, startPx, barW, heightPx);
+      }
     });
 
     /* 호버 인디케이터 */
@@ -360,24 +393,33 @@ export default function PlaylistPage() {
       const minute = Math.floor((totalSeconds % 3600) / 60);
       const second = Math.floor(totalSeconds % 60);
 
+      console.log(`[Timebar] Click → ${hour}:${minute}:${second}, channels:`, channelIds);
+
       if (hour >= 0 && hour < 24) {
         playAt(hour, minute, second);
       }
     };
 
-    /* 휠 줌 */
+    /* 휠 줌 — 줌 변경 시 스크롤 위치를 비례 조정하여 점프 방지 */
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const zoomFactor = e.deltaY < 0 ? 2 : 0.5;
       const newZoom = Math.max(1, Math.min(8, zoomLevel * zoomFactor));
       if (newZoom !== zoomLevel) {
+        const oldTotal = 1440 * zoomLevel;
+        const newTotal = 1440 * newZoom;
+        const visibleH = scrollArea.clientHeight;
+        /* 현재 스크롤 비율을 유지하면서 새 줌에 맞게 offset 조정 */
+        const ratio = oldTotal > 0 ? scrollOffsetRef.current / oldTotal : 0;
+        scrollOffsetRef.current = Math.max(0, Math.min(ratio * newTotal, newTotal - visibleH));
         setZoomLevel(newZoom);
       }
     };
 
-    /* 드래그 스크롤 (줌 > 1일 때) */
+    /* 드래그 스크롤 — 캔버스가 뷰포트보다 클 때 항상 활성화 */
     const handleMouseDown = (e: MouseEvent) => {
-      if (zoomLevel > 1) {
+      const TOTAL_HEIGHT = 1440 * zoomLevel;
+      if (TOTAL_HEIGHT > scrollArea.clientHeight) {
         isDraggingRef.current = true;
         dragStartYRef.current = e.clientY;
         dragStartOffsetRef.current = scrollOffsetRef.current;
@@ -457,12 +499,15 @@ export default function PlaylistPage() {
           {Array.from({ length: NUM_CHANNELS }, (_, i) => (
             <div key={i} className="relative bg-black rounded-xl overflow-hidden border border-white/[0.08]">
               {/* 비디오 */}
+              {/* visibility:hidden으로 항상 DOM에 존재 — display:none은 play() 차단 */}
               <video
                 ref={(el) => { videoRefs.current[i] = el; }}
                 controls
                 muted
                 playsInline
-                className={`w-full h-full object-contain ${overlayVisible[i] ? "hidden" : "block"}`}
+                autoPlay
+                className="w-full h-full object-contain absolute inset-0"
+                style={{ visibility: overlayVisible[i] ? "hidden" : "visible" }}
               />
 
               {/* 오버레이: 녹화 선택 */}
