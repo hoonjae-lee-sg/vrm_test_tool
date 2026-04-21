@@ -43,6 +43,8 @@ export default function PlaylistPage() {
 
   /* 세그먼트 데이터 (recordingId → Segment[]) */
   const segmentDataRef = useRef<Record<string, Segment[]>>({});
+  /* 세그먼트 로드 완료 카운터 — 변경 시 drawTimebar 리렌더 트리거 */
+  const [segmentVersion, setSegmentVersion] = useState(0);
 
   /* hls.js 인스턴스 배열 — 채널별 HLS 재생 관리 */
   const hlsInstancesRef = useRef<(Hls | null)[]>(Array(NUM_CHANNELS).fill(null));
@@ -110,6 +112,8 @@ export default function PlaylistPage() {
       }
 
       segmentDataRef.current[recordingId] = segments;
+      /* 세그먼트 로드 완료 → 카운터 증가로 drawTimebar 재생성 트리거 */
+      setSegmentVersion((v) => v + 1);
     } catch (err) {
       console.warn(`Segments not available for ${recordingId}:`, err);
     }
@@ -128,13 +132,14 @@ export default function PlaylistPage() {
         next[index] = false;
         return next;
       });
+      /* loadSegments 완료 시 segmentVersion 증가 → drawTimebar 자동 재생성/재호출 */
       await loadSegments(recId);
-      drawTimebar();
     },
     [loadSegments]
   );
 
   /* ── HLS 재생 ── */
+  /* 매 클릭마다 Hls 인스턴스를 destroy 후 재생성하여 상태 충돌 방지 */
   const playHls = useCallback(
     (channelIndex: number, url: string, startTime: number = 0) => {
       const video = videoRefs.current[channelIndex];
@@ -143,22 +148,26 @@ export default function PlaylistPage() {
       /* 기존 인스턴스 파괴 */
       if (hlsInstancesRef.current[channelIndex]) {
         hlsInstancesRef.current[channelIndex]!.destroy();
+        hlsInstancesRef.current[channelIndex] = null;
       }
 
-      const hls = new Hls({ debug: false, enableWorker: true, lowLatencyMode: true });
+      /* startPosition: hls.js가 처음부터 해당 위치의 세그먼트를 로드하도록 지정.
+         MANIFEST_PARSED 후 currentTime을 설정하는 방식은 세그먼트 미로드 → 검은 화면 유발. */
+      const hls = new Hls({
+        debug: false,
+        enableWorker: true,
+        startPosition: startTime > 0 ? startTime : 0,
+      });
       hlsInstancesRef.current[channelIndex] = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.currentTime = startTime > 0 ? startTime : (hls.startPosition > 0 ? hls.startPosition : 0);
-        /* 브라우저 자동재생 정책: muted 상태에서만 자동재생 허용 */
         video.muted = true;
         video.play().catch(() => {});
       });
 
       hls.on(Hls.Events.ERROR, (_: unknown, data: unknown) => {
-        /* hls.js 에러 데이터 구조 — fatal 여부 및 상세 정보 */
         const errData = data as { fatal?: boolean; details?: string };
         if (errData.fatal) console.error(`CH ${channelIndex + 1} Fatal:`, errData.details);
       });
@@ -307,10 +316,12 @@ export default function PlaylistPage() {
     const channelWidth = (CANVAS_WIDTH - 80) / NUM_CHANNELS;
 
     channelIds.forEach((recId, index) => {
-      if (!recId || !segmentDataRef.current[recId]) return;
+      if (!recId) return;
+      const segData = segmentDataRef.current[recId];
+      if (!segData) return;
 
       ctx.fillStyle = colors[index % colors.length];
-      const daySegments = segmentDataRef.current[recId]
+      const daySegments = segData
         .filter((s) => s.start + s.duration > startTs && s.start < endTs)
         .sort((a, b) => a.start - b.start);
 
@@ -361,7 +372,7 @@ export default function PlaylistPage() {
     }
 
     ctx.restore();
-  }, [zoomLevel, currentDate, channelIds]);
+  }, [zoomLevel, currentDate, channelIds, segmentVersion]);
 
   /* 날짜/줌 변경 시 타임바 다시 그리기 */
   useEffect(() => {
