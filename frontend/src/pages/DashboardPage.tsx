@@ -575,6 +575,26 @@ function CameraCard({
       setStreamStatus(`error: ${String(detail || type)}`);
     });
 
+    /* 진단 로깅 — ?debug=1 또는 개발 모드에서만 활성화. useMpegtsPlayer와 동일 기준.
+       MEDIA_INFO 도달 시점 · buffered 잔량 · waiting/stalled 발생을 기록해 서버/클라이언트
+       버퍼링 원인 분리 근거 확보. */
+    const debugEnabled =
+      import.meta.env.DEV || new URLSearchParams(window.location.search).get("debug") === "1";
+    const t0 = performance.now();
+    if (debugEnabled) {
+      player.on(mpegts.Events.MEDIA_INFO, (info: unknown) => {
+        console.log(`[Dashboard][diag] MEDIA_INFO ${recId} elapsed=${(performance.now() - t0).toFixed(0)}ms`, info);
+      });
+      let lastStatLog = 0;
+      player.on(mpegts.Events.STATISTICS_INFO, (stat: unknown) => {
+        const now = performance.now();
+        if (now - lastStatLog > 5000) {
+          lastStatLog = now;
+          console.log(`[Dashboard][diag] STAT ${recId}`, stat);
+        }
+      });
+    }
+
     /* video 네이티브 이벤트로 상태 관리 — mpegts.js MEDIA_INFO가 프록시 환경에서 누락될 수 있음 */
     const onPlaying = () => {
       if (!cancelled) {
@@ -589,8 +609,25 @@ function CameraCard({
         if (!cancelled) setStreamStatus("click to play");
       });
     };
+    const bufferedRemain = () => {
+      if (!video.buffered.length) return 0;
+      const end = video.buffered.end(video.buffered.length - 1);
+      return +(end - video.currentTime).toFixed(3);
+    };
+    const onWaiting = () => {
+      if (cancelled || !debugEnabled) return;
+      console.warn(`[Dashboard][diag] waiting ${recId} remain=${bufferedRemain()}s readyState=${video.readyState}`);
+    };
+    const onStalled = () => {
+      if (cancelled || !debugEnabled) return;
+      console.warn(`[Dashboard][diag] stalled ${recId} remain=${bufferedRemain()}s readyState=${video.readyState}`);
+    };
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
+    if (debugEnabled) {
+      video.addEventListener("waiting", onWaiting);
+      video.addEventListener("stalled", onStalled);
+    }
 
     player.attachMediaElement(video);
     player.load();
@@ -600,6 +637,10 @@ function CameraCard({
       cancelled = true;
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
+      if (debugEnabled) {
+        video.removeEventListener("waiting", onWaiting);
+        video.removeEventListener("stalled", onStalled);
+      }
       player.destroy();
       playerRef.current = null;
     };

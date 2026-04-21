@@ -132,6 +132,30 @@ export function useMpegtsPlayer({
       onId3Metadata?.(data);
     });
 
+    /* 진단 로깅: 버퍼링 원인 분석용 — ?debug=1 쿼리 또는 개발 모드에서만 활성화.
+       MEDIA_INFO 도달 시점(서버 초기 flush 지연 확인)과 video 이벤트 타임라인(클라이언트
+       버퍼 고갈 패턴 확인)을 함께 찍어 서버/클라이언트 원인 분리 판정 근거 확보. */
+    const debugEnabled =
+      import.meta.env.DEV || new URLSearchParams(window.location.search).get("debug") === "1";
+    if (debugEnabled) {
+      const t0 = performance.now();
+      player.on(mpegts.Events.MEDIA_INFO, (info: unknown) => {
+        console.log(`[Live][diag] MEDIA_INFO ${recId}/${quality} elapsed=${(performance.now() - t0).toFixed(0)}ms`, info);
+      });
+      player.on(mpegts.Events.LOADING_COMPLETE, () => {
+        console.log(`[Live][diag] LOADING_COMPLETE ${recId}/${quality}`);
+      });
+      /* STATISTICS_INFO는 1초 주기로 flood되므로 5초에 1회로 샘플링 */
+      let lastStatLog = 0;
+      player.on(mpegts.Events.STATISTICS_INFO, (stat: unknown) => {
+        const now = performance.now();
+        if (now - lastStatLog > 5000) {
+          lastStatLog = now;
+          console.log(`[Live][diag] STAT ${recId}/${quality}`, stat);
+        }
+      });
+    }
+
     /* video 네이티브 이벤트로 상태 관리 — mpegts.js MEDIA_INFO가 프록시 환경에서 누락될 수 있음 */
     const onPlaying = () => {
       if (!cancelled) {
@@ -146,8 +170,28 @@ export function useMpegtsPlayer({
         if (!cancelled) setStatus("click to play");
       });
     };
+    /* 진단: 버퍼링 진입/해제 지점과 당시 buffered 잔량을 기록.
+       waiting 이벤트 발생 시 currentTime 대비 buffered.end 차이가 작으면 클라이언트 버퍼 고갈,
+       크면 서버 송신 지연이 원인. stalled/progress도 함께 찍어 네트워크 측 정체 판별. */
+    const bufferedRemain = () => {
+      if (!video.buffered.length) return 0;
+      const end = video.buffered.end(video.buffered.length - 1);
+      return +(end - video.currentTime).toFixed(3);
+    };
+    const onWaiting = () => {
+      if (cancelled || !debugEnabled) return;
+      console.warn(`[Live][diag] waiting ${recId}/${quality} remain=${bufferedRemain()}s readyState=${video.readyState}`);
+    };
+    const onStalled = () => {
+      if (cancelled || !debugEnabled) return;
+      console.warn(`[Live][diag] stalled ${recId}/${quality} remain=${bufferedRemain()}s readyState=${video.readyState}`);
+    };
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
+    if (debugEnabled) {
+      video.addEventListener("waiting", onWaiting);
+      video.addEventListener("stalled", onStalled);
+    }
 
     /* 플레이어 미디어 연결 및 로드 시작 */
     player.attachMediaElement(video);
@@ -159,6 +203,10 @@ export function useMpegtsPlayer({
       cancelled = true;
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
+      if (debugEnabled) {
+        video.removeEventListener("waiting", onWaiting);
+        video.removeEventListener("stalled", onStalled);
+      }
       player.destroy();
       playerRef.current = null;
     };
