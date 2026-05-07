@@ -15,6 +15,20 @@ env/
 *_pb2.py
 *_pb2_grpc.py
 protos/**/*.proto
+protos/**/__init__.py
 
 # Project Specific
 temp/
+
+# 디자인 작업 산출물 / IDE 도구 — commit 제외
+frontend/src/.design-canvas.state.json
+frontend/src/design-canvas.jsx
+frontend/src/frontend-src/
+frontend/src/redesign/
+frontend/src/VRM Redesign.html
+frontend/src/API_REQUIREMENTS.md
+frontend/src/README.md
+
+# 테스트 도구 / 운영 측정 결과
+rtsp_test.sh
+sync_diagnostics/
