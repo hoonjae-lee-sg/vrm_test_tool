@@ -13,6 +13,8 @@ import logging
 import os
 import re
 import statistics
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -24,6 +26,30 @@ from snapshot_receiver.config import config as sr_config
 
 router = APIRouter(prefix="/api", tags=["sync"])
 logger = logging.getLogger(__name__)
+
+# === 캐시 (P2-2) ===
+# 디스크 walk 비용이 크므로 결과를 5분 TTL 로 캐싱. 다중 클라이언트가 짧은 간격으로
+# 호출해도 매번 walk 하지 않도록. 키: (endpoint, params tuple).
+_CACHE_TTL_SEC = 300
+_cache_lock = threading.Lock()
+_cache: dict = {}  # key → (timestamp, value)
+
+
+def _cache_get(key):
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry is None:
+            return None
+        ts, val = entry
+        if time.time() - ts > _CACHE_TTL_SEC:
+            _cache.pop(key, None)
+            return None
+        return val
+
+
+def _cache_set(key, value):
+    with _cache_lock:
+        _cache[key] = (time.time(), value)
 
 # 임계값 — frontend SYNC_THRESHOLD_* 와 일치 (API_REQUIREMENTS §3.2 Note).
 SYNC_THRESHOLD_PERFECT_MS = 10
@@ -262,11 +288,17 @@ def _build_distribution_sync(date: str, hour: Optional[str]):
 
 @router.get("/sync/sessions")
 async def get_sync_sessions():
-    """서버 모드로 캡처된 세션 목록 — date+hour 단위로 그룹핑."""
+    """서버 모드로 캡처된 세션 목록 — date+hour 단위로 그룹핑. 5분 캐시."""
+    cache_key = ("sessions",)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
         loop = asyncio.get_event_loop()
         sessions = await loop.run_in_executor(None, _build_sessions_sync)
-        return {"sessions": sessions, "total": len(sessions)}
+        result = {"sessions": sessions, "total": len(sessions)}
+        _cache_set(cache_key, result)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -294,8 +326,15 @@ async def get_sync_distribution(
         if not (len(hour) == 2 and hour.isdigit() and 0 <= int(hour) <= 23):
             raise HTTPException(status_code=400, detail="hour must be HH (00-23)")
 
+    cache_key = ("distribution", date, hour)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _build_distribution_sync, date, hour)
+        result = await loop.run_in_executor(None, _build_distribution_sync, date, hour)
+        _cache_set(cache_key, result)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
