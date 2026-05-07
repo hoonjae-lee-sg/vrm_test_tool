@@ -1,135 +1,132 @@
 @import "tailwindcss";
 
 /*
- * VRM Test Tool — Mission Control 디자인 시스템
- * 다크 글래스모피즘 + 네온 상태 글로우 + 도트 그리드 텍스처 + 브리딩 애니메이션
+ * VRM Studio — Light & engineered 디자인 시스템
+ * 톤: Linear / Vercel 라이트, slate 기반 뉴트럴 + indigo 액센트
+ * - 타이포 hierarchy + tabular nums (ID/시간/숫자 정렬)
+ * - 컬러 액센트는 절제, 상태색은 명확하게
  */
 @theme {
-  /* ── 배경 색상 (딥 네이비 기반) ── */
-  --color-bg-app: #0a0e1a;
-  --color-bg-sidebar: #0a0e1a;
-  --color-bg-card: rgba(255, 255, 255, 0.03);
-  --color-bg-input: rgba(255, 255, 255, 0.04);
-  --color-bg-hover: #141a2e;
+  /* ── 배경 ── */
+  --color-bg-app: #fafafa;        /* 본문 배경 (off-white, 살짝 따뜻) */
+  --color-bg-sidebar: #ffffff;    /* 사이드바 화이트 */
+  --color-bg-card: #ffffff;       /* 카드 화이트 */
+  --color-bg-input: #ffffff;
+  --color-bg-hover: #f4f4f5;      /* zinc-100 hover */
+  --color-bg-subtle: #f4f4f5;     /* 보조 패널 배경 */
+  --color-bg-canvas: #18181b;     /* 비디오/캔버스 영역 (zinc-900) */
 
-  /* ── 텍스트 색상 (Slate 계열) ── */
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-text-accent: #3b82f6;
+  /* ── 텍스트 ── */
+  --color-text-primary: #18181b;   /* zinc-900 */
+  --color-text-secondary: #52525b; /* zinc-600 */
+  --color-text-muted: #a1a1aa;     /* zinc-400 */
+  --color-text-accent: #4f46e5;    /* indigo-600 */
+  --color-text-inverse: #fafafa;
 
-  /* ── 브랜드 색상 (Mission Control Blue) ── */
-  --color-brand: #3b82f6;
-  --color-brand-hover: #60a5fa;
+  /* ── 브랜드 (Indigo) ── */
+  --color-brand: #4f46e5;          /* indigo-600 */
+  --color-brand-hover: #4338ca;    /* indigo-700 */
+  --color-brand-soft: #eef2ff;     /* indigo-50 */
+  --color-brand-softer: #e0e7ff;   /* indigo-100 */
 
-  /* ── 상태 색상 ── */
-  --color-status-running: #10b981;
-  --color-status-error: #ef4444;
-  --color-status-pending: #f59e0b;
-  --color-status-stopped: #6b7280;
+  /* ── 상태 색상 (subtle bg + saturated fg) ── */
+  --color-status-running: #16a34a;  /* green-600 */
+  --color-status-running-soft: #f0fdf4;
+  --color-status-error: #dc2626;    /* red-600 */
+  --color-status-error-soft: #fef2f2;
+  --color-status-pending: #d97706;  /* amber-600 */
+  --color-status-pending-soft: #fffbeb;
+  --color-status-stopped: #71717a;  /* zinc-500 */
+  --color-status-stopped-soft: #f4f4f5;
 
-  /* ── 보더 (글래스 보더 — 반투명 화이트) ── */
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-subtle: rgba(255, 255, 255, 0.06);
-  --color-border-focus: #3b82f6;
+  /* LIVE/REC dot 강조용 */
+  --color-live: #ef4444;            /* red-500 */
 
-  /* ── 카드 (글래스 효과) ── */
-  --color-card: rgba(255, 255, 255, 0.03);
-  --color-card-hover: rgba(255, 255, 255, 0.06);
+  /* ── 보더 ── */
+  --color-border: #e4e4e7;          /* zinc-200 */
+  --color-border-subtle: #f4f4f5;   /* zinc-100 */
+  --color-border-strong: #d4d4d8;   /* zinc-300 */
+  --color-border-focus: #4f46e5;    /* indigo-600 */
 
-  /* ── 폰트 — DM Sans 기본, Outfit 디스플레이, JetBrains Mono 코드 ── */
-  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
-  --font-display: "Outfit", "DM Sans", system-ui, sans-serif;
+  /* ── 카드 ── */
+  --color-card: #ffffff;
+  --color-card-hover: #fafafa;
+
+  /* ── 폰트 ── */
+  --font-sans: "Inter", "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", "DM Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
-  /* ── 그림자 (다크 테마 최적화) ── */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-floating: 0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3);
+  /* ── 그림자 (라이트 테마, 절제) ── */
+  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-md: 0 1px 3px rgba(24, 24, 27, 0.06), 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-lg: 0 10px 30px rgba(24, 24, 27, 0.08), 0 4px 8px rgba(24, 24, 27, 0.04);
+  --shadow-card: 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-elevated: 0 4px 12px rgba(24, 24, 27, 0.08);
+  --shadow-floating: 0 16px 48px rgba(24, 24, 27, 0.12);
 
   /* ── 애니메이션 ── */
-  --animate-fade-in: fade-in 0.3s ease;
-  --animate-slide-in: slide-in 0.3s ease-out;
-  --animate-scale-in: scale-in 0.2s ease-out;
+  --animate-fade-in: fade-in 0.2s ease;
+  --animate-slide-in: slide-in 0.25s ease-out;
+  --animate-scale-in: scale-in 0.18s ease-out;
   --animate-breathe: breathe 2s ease-in-out infinite;
-  --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
 }
 
-/* 웹 폰트는 index.html <link> 태그로 로드 (CSS @import 순서 제약 회피) */
-
-/* ── font-display 유틸리티 — Outfit 헤딩/숫자용 ── */
-.font-display {
-  font-family: "Outfit", "DM Sans", system-ui, sans-serif;
-}
-
-/* ── HTML 기본 설정 — 부드러운 스크롤 ── */
+/* ── HTML 기본 ── */
 html {
   scroll-behavior: smooth;
 }
 
-/* ── 기본 스타일 — 딥 네이비 배경 + 도트 그리드 텍스처 ── */
 body {
   margin: 0;
   font-family: var(--font-sans);
   background-color: var(--color-bg-app);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 24px 24px;
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01", "ss03";
 }
 
 #root {
   min-height: 100vh;
 }
 
-/* ── 글래스 카드 유틸리티 — 반투명 배경 + 블러 + 보더 ── */
-.glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* 숫자/ID/시간 정렬용 */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── 글로우 유틸리티 — 브랜드/성공/에러 네온 박스 섀도우 ── */
-.glow-brand {
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-}
-.glow-success {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
-}
-.glow-error {
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+/* mono 유틸리티 (이미 font-mono Tailwind 클래스 있지만 명시적 사용을 위해) */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
-/* ── 입력 필드 공통 포커스 스타일 ── */
+/* ── 입력 필드 포커스 ── */
 input:focus,
 select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--color-border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
 }
 
-/* ── select 기본 스타일 ── */
+/* ── select 화살표 (zinc-400) ── */
 select {
   appearance: none;
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a1a1aa' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
 }
 
-/* ── 스크롤바 커스텀 — 네이비 테마 매칭, 얇은 트랙 ── */
+/* ── 스크롤바 — 라이트, 얇게 ── */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -137,142 +134,55 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
+  background: #e4e4e7;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: #d4d4d8;
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
-/* ── 키프레임 애니메이션 ── */
+/* 다크 영역(비디오 패널 등) 내부 스크롤바 */
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  background-clip: padding-box;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: padding-box;
+}
+
+/* ── 키프레임 ── */
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slide-in {
-  from { opacity: 0; transform: translateY(-20px); }
+  from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
-}
-
-/* 브리딩 애니메이션 — 불투명도 사이클 (상태 인디케이터용) */
-@keyframes breathe {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
-
-/* 스케일인 애니메이션 — 모달/카드 진입 효과 */
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
 }
 
-/* 글로우 펄스 애니메이션 — 네온 박스 섀도우 강도 변화 */
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
-  50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
-/* ══════════════════════════════════════════════════════
-   우주 배경 — 은하 + 행성(SVG) + 랜덤 별
-   ══════════════════════════════════════════════════════ */
-
-@keyframes planet-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-18px); }
+/* LIVE 도트 펄스 */
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
 }
 
-/* 토성 링 회전 */
-@keyframes ring-rotate {
-  from { transform: rotateX(68deg) rotateZ(-20deg) rotate(0deg); }
-  to { transform: rotateX(68deg) rotateZ(-20deg) rotate(360deg); }
-}
-
-@keyframes twinkle {
-  0%, 100% { opacity: 0.05; transform: scale(0.6); }
-  50% { opacity: 1; transform: scale(1.3); }
-}
-
-/* 배경 컨테이너 */
-.space-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-/* ── 은하 — SVG로 렌더링, overflow visible로 잘림 방지 ── */
-.galaxy-wrap {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-/* ── 행성 — 페이지 전환 시 transform으로 위치 변경 (GPU 가속, 끊김 없음) ── */
-.planet-wrap {
-  position: absolute;
-  top: 0;
-  left: 0;
-  will-change: transform;
-  transition: transform 2.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* 행성 SVG 크기 전환 (대시보드 ↔ 다른 페이지) */
-.planet-wrap svg {
-  transition: width 2.5s cubic-bezier(0.22, 1, 0.36, 1),
-              height 2.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* 부유 애니메이션은 별도 inner 래퍼에서 처리 (transition과 animation 충돌 방지) */
-.planet-float-inner {
-  animation: planet-float 24s ease-in-out infinite;
-}
-
-/* ── 별 (JS에서 랜덤 생성, 3종류) ── */
-
-.star--dot {
-  position: absolute;
-  background: white;
-  border-radius: 50%;
-  box-shadow: 0 0 3px 1px rgba(255, 255, 255, 0.5);
-  animation: twinkle 3s ease-in-out infinite;
-}
-
-.star--glow {
-  position: absolute;
-  background: rgba(220, 230, 255, 0.9);
-  border-radius: 50%;
-  box-shadow: 0 0 8px 3px rgba(180, 200, 255, 0.6), 0 0 16px 6px rgba(100, 150, 255, 0.25);
-  animation: twinkle 3s ease-in-out infinite;
-}
-
-.star--cross {
-  position: absolute;
-  background: white;
-  border-radius: 50%;
-  box-shadow: 0 0 10px 4px rgba(255, 255, 255, 0.7), 0 0 25px 8px rgba(147, 197, 253, 0.35);
-  animation: twinkle 3s ease-in-out infinite;
-}
-.star--cross::before,
-.star--cross::after {
-  content: '';
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-}
-.star--cross::before {
-  width: 24px; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
-}
-.star--cross::after {
-  width: 1px; height: 24px;
-  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+.live-dot {
+  animation: live-pulse 1.6s ease-in-out infinite;
 }

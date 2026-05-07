@@ -257,14 +257,14 @@ export default function PlaylistPage() {
     const scrollOffset = scrollOffsetRef.current;
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, TOTAL_HEIGHT);
-    /* 전체 캔버스에 배경색 채우기 — 드래그 시 빈 영역 방지 */
-    ctx.fillStyle = "#1e1e1e";
+    /* 전체 캔버스에 배경색 채우기 — 라이트 톤 (카드 배경) */
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, CANVAS_WIDTH, TOTAL_HEIGHT);
     ctx.save();
     ctx.translate(0, -scrollOffset);
 
-    /* 시간 그리드 및 라벨 */
-    ctx.font = "12px Inter, sans-serif";
+    /* 시간 그리드 및 라벨 — zinc-200/300 그리드, zinc-500 라벨 */
+    ctx.font = "500 11px 'Inter', sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     const totalMinutes = 24 * 60;
@@ -274,17 +274,20 @@ export default function PlaylistPage() {
         ctx.beginPath();
         ctx.moveTo(50, y);
         ctx.lineTo(CANVAS_WIDTH, y);
-        ctx.strokeStyle = "#555";
+        ctx.strokeStyle = "#d4d4d8"; /* zinc-300 */
+        ctx.lineWidth = 1;
         ctx.stroke();
-        ctx.fillStyle = "#888";
+        ctx.fillStyle = "#52525b"; /* zinc-600 */
+        ctx.font = "600 11px 'JetBrains Mono', monospace";
         ctx.fillText(`${String(minute / 60).padStart(2, "0")}:00`, 40, y);
       } else if (zoomLevel >= 4 && minute % 10 === 0) {
         ctx.beginPath();
         ctx.moveTo(50, y);
         ctx.lineTo(60, y);
-        ctx.strokeStyle = "#444";
+        ctx.strokeStyle = "#e4e4e7"; /* zinc-200 */
         ctx.stroke();
-        ctx.fillStyle = "#888";
+        ctx.fillStyle = "#a1a1aa"; /* zinc-400 */
+        ctx.font = "500 10px 'JetBrains Mono', monospace";
         ctx.fillText(
           `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`,
           40,
@@ -294,9 +297,10 @@ export default function PlaylistPage() {
         ctx.beginPath();
         ctx.moveTo(50, y);
         ctx.lineTo(70, y);
-        ctx.strokeStyle = "#444";
+        ctx.strokeStyle = "#e4e4e7";
         ctx.stroke();
-        ctx.fillStyle = "#888";
+        ctx.fillStyle = "#a1a1aa";
+        ctx.font = "500 10px 'JetBrains Mono', monospace";
         ctx.fillText(
           `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`,
           40,
@@ -305,8 +309,18 @@ export default function PlaylistPage() {
       }
     }
 
-    /* 채널별 세그먼트 그리기 — 인접 세그먼트를 병합하여 연속 막대로 렌더링 */
-    const colors = ["#4caf50", "#2196f3", "#ffc107", "#e91e63", "#9c27b0", "#00bcd4", "#ff9800", "#795548", "#607d8b"];
+    /* 채널별 세그먼트 — indigo 계열 단일 톤에서 saturation 조절로 차별. 세그먼트가 주인공이므로 다양한 설틀 톤 사용 */
+    const colors = [
+      "#4f46e5", /* indigo-600 */
+      "#0891b2", /* cyan-600 */
+      "#16a34a", /* green-600 */
+      "#ca8a04", /* yellow-600 */
+      "#dc2626", /* red-600 */
+      "#9333ea", /* purple-600 */
+      "#0d9488", /* teal-600 */
+      "#ea580c", /* orange-600 */
+      "#475569", /* slate-600 */
+    ];
     const startOfDay = new Date(currentDate);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(currentDate);
@@ -347,10 +361,10 @@ export default function PlaylistPage() {
       }
     });
 
-    /* 호버 인디케이터 */
+    /* 호버 인디케이터 — indigo 라인 + 시간 라벨 */
     if (hoverYRef.current >= 0) {
       const absoluteY = scrollOffset + hoverYRef.current;
-      ctx.strokeStyle = "rgba(255, 100, 100, 0.8)";
+      ctx.strokeStyle = "#4f46e5"; /* indigo-600 */
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, absoluteY);
@@ -361,14 +375,16 @@ export default function PlaylistPage() {
       const h = Math.floor(totalSeconds / 3600);
       const m = Math.floor((totalSeconds % 3600) / 60);
       const s = Math.floor(totalSeconds % 60);
-      ctx.fillStyle = "rgba(255, 100, 100, 1)";
-      ctx.font = "bold 13px Inter, sans-serif";
+      /* 라벨 배경 박스 (가독성) */
+      const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      ctx.font = "600 12px 'JetBrains Mono', monospace";
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = "#4f46e5";
+      ctx.fillRect(56, absoluteY + 4, tw + 12, 18);
+      ctx.fillStyle = "#ffffff";
       ctx.textAlign = "left";
-      ctx.fillText(
-        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
-        60,
-        absoluteY + 15
-      );
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, 62, absoluteY + 13);
     }
 
     ctx.restore();
@@ -506,9 +522,9 @@ export default function PlaylistPage() {
       {/* ── 메인: 3x3 비디오 그리드 ── */}
       <div className="flex-1 p-2 overflow-hidden">
         <div className="grid grid-cols-3 grid-rows-3 gap-1 h-full">
-          {/* 비디오 그리드 셀 — 글래스 보더 + 라운딩 */}
+          {/* 비디오 그리드 셀 — 라이트 카드 */}
           {Array.from({ length: NUM_CHANNELS }, (_, i) => (
-            <div key={i} className="relative bg-black rounded-xl overflow-hidden border border-white/[0.08]">
+            <div key={i} className="relative bg-black rounded-md overflow-hidden border border-border">
               {/* 비디오 */}
               {/* visibility:hidden으로 항상 DOM에 존재 — display:none은 play() 차단 */}
               <video
@@ -521,12 +537,12 @@ export default function PlaylistPage() {
                 style={{ visibility: overlayVisible[i] ? "hidden" : "visible" }}
               />
 
-              {/* 오버레이: 녹화 선택 */}
+              {/* 오버레이: 녹화 선택 — 라이트 톰 */}
               {overlayVisible[i] && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-4">
-                  <span className="text-xs text-text-muted mb-2">CH {i + 1}</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-app/95 backdrop-blur-sm p-4">
+                  <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold mb-2">CH {i + 1}</span>
                   <select
-                    className="w-full px-2 py-1.5 bg-bg-app border border-border rounded text-text-primary text-xs mb-2"
+                    className="w-full h-8 px-2 bg-bg-input border border-border rounded-md text-text-primary text-[12px] mb-2 hover:border-border-strong focus:border-brand outline-none transition-colors"
                     defaultValue=""
                     id={`rec-select-${i}`}
                   >
@@ -559,7 +575,7 @@ export default function PlaylistPage() {
                       return next;
                     });
                   }}
-                  className="absolute top-1 right-1 px-2 py-0.5 bg-black/60 text-white text-[10px] rounded hover:bg-black/80 z-10"
+                  className="absolute top-1.5 right-1.5 px-2 py-0.5 bg-black/60 text-white text-[10px] rounded font-semibold uppercase tracking-wider hover:bg-black/80 z-10"
                 >
                   Change
                 </button>
@@ -569,13 +585,13 @@ export default function PlaylistPage() {
         </div>
       </div>
 
-      {/* ── 우측: 날짜 네비게이터 + 타임바 — 글래스모피즘 사이드바 ── */}
-      <div className="w-72 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-l border-white/[0.06] flex flex-col">
-        {/* 날짜 네비게이터 — 글래스 버튼 스타일 */}
-        <div className="flex items-center justify-between p-3 border-b border-white/[0.06]">
+      {/* ── 우측: 날짜 네비게이터 + 타임바 — Studio 라이트 사이드바 ── */}
+      <div className="w-72 flex-shrink-0 bg-bg-sidebar border-l border-border flex flex-col">
+        {/* 날짜 네비게이터 */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
           <button
             onClick={() => changeDate(-1)}
-            className="px-2 py-1 bg-white/[0.05] hover:bg-white/[0.1] rounded-lg text-text-secondary hover:text-text-primary text-sm transition"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
           >
             <ChevronLeftIcon className="w-4 h-4" />
           </button>
@@ -596,14 +612,14 @@ export default function PlaylistPage() {
           />
           <button
             onClick={() => changeDate(1)}
-            className="px-2 py-1 bg-white/[0.05] hover:bg-white/[0.1] rounded-lg text-text-secondary hover:text-text-primary text-sm transition"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
           >
             <ChevronRightIcon className="w-4 h-4" />
           </button>
         </div>
 
         {/* 상태 바 */}
-        <div className="px-3 py-1 text-[10px] text-text-muted border-b border-white/[0.06]">
+        <div className="px-3 py-1.5 text-[11px] text-text-muted tabular border-b border-border-subtle bg-bg-subtle">
           {statusMsg}
         </div>
 

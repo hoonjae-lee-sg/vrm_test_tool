@@ -41,36 +41,36 @@ export default function LogViewer({ logs, onClear }: LogViewerProps) {
   }, [logs]);
 
   return (
-    /* 로그 패널 — 터미널 스타일 (다크 배경 + 모노 폰트) */
-    <div className="w-[28rem] flex-shrink-0 bg-black/40 border-l border-white/[0.06] flex flex-col">
+    /* 로그 패널 — 터미널 스타일 (코드 로그 영역은 다크 유지) */
+    <div className="w-[28rem] flex-shrink-0 bg-[#0E1116] border-l border-border flex flex-col">
       {/* 헤더 — 제목 및 초기화 버튼 */}
-      <div className="flex items-center justify-between p-3 border-b border-white/[0.06]">
-        <h3 className="text-xs font-bold font-mono text-text-muted uppercase tracking-wider">
-          Response Log
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+        <h3 className="text-[10px] font-semibold font-mono text-white/50 uppercase tracking-[0.15em]">
+          Response log
         </h3>
         <button
           onClick={onClear}
-          className="text-xs text-text-muted hover:text-text-primary"
+          className="text-[11px] text-white/50 hover:text-white transition-colors"
         >
           Clear
         </button>
       </div>
 
-      {/* 로그 목록 — 터미널 스타일 스크롤 영역 */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-3 space-y-3 font-mono text-sm">
+      {/* 로그 목록 */}
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 font-mono text-sm">
         {logs.length === 0 ? (
-          <p className="text-xs text-text-muted">Waiting for commands...</p>
+          <p className="text-[11px] text-white/40">Waiting for commands…</p>
         ) : (
           logs.map((entry) => (
-            <div key={entry.id} className="text-xs">
+            <div key={entry.id} className="text-[11px]">
               {/* 시각 및 제목 */}
               <div className="flex gap-2 mb-1">
-                <span className="text-text-muted font-mono">[{entry.time}]</span>
-                <span className="text-brand font-semibold">{entry.title}</span>
+                <span className="text-white/40">[{entry.time}]</span>
+                <span className="text-[#7FA9FF] font-semibold">{entry.title}</span>
               </div>
-              {/* 응답 데이터 JSON 표시 */}
+              {/* 응답 데이터 JSON */}
               {entry.data && (
-                <pre className="bg-bg-app rounded p-2 overflow-x-auto text-text-secondary font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                <pre className="bg-black/40 rounded p-2 overflow-x-auto text-white/70 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
                   {JSON.stringify(entry.data, null, 2)}
                 </pre>
               )}

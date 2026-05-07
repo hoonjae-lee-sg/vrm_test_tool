@@ -97,28 +97,32 @@ export default function TesterPage() {
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
-      {/* ── 좌측: API 메뉴 사이드바 — 글래스모피즘 배경 ── */}
-      <div className="w-56 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] overflow-y-auto">
-        <div className="p-3">
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
-            API Methods
+      {/* ── 좌측: API 메뉴 사이드바 — Studio 라이트 톤 ── */}
+      <div className="w-56 flex-shrink-0 bg-bg-card border-r border-border overflow-y-auto">
+        <div className="px-3 py-4">
+          <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] px-2 mb-2.5">
+            API methods
           </h3>
-          <nav className="space-y-1">
+          <nav className="flex flex-col gap-0.5">
             {API_MENU.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActivePanel(item.id)}
-                /* API 메뉴 버튼 — 활성 시 브랜드 좌측 보더 표시 */
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition ${
+                /* API 메뉴 버튼 — 활성 시 다크 잍 배경 */
+                className={`w-full text-left px-2.5 py-2 rounded-md text-[13px] transition-colors flex items-center gap-2 ${
                   activePanel === item.id
-                    ? "bg-brand/10 text-brand font-semibold border-l-2 border-brand"
-                    : "text-text-secondary hover:bg-white/[0.04] hover:text-text-primary"
+                    ? "bg-text-primary text-bg-app font-medium"
+                    : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
                 }`}
               >
-                <span className="font-mono text-[10px] mr-1.5 opacity-60">
+                <span
+                  className={`font-mono text-[9px] font-bold tabular w-9 ${
+                    activePanel === item.id ? "opacity-70" : "text-text-muted"
+                  }`}
+                >
                   {item.method}
                 </span>
-                {item.label}
+                <span className="truncate">{item.label}</span>
               </button>
             ))}
           </nav>
@@ -237,7 +241,7 @@ export default function TesterPage() {
                     <td className="px-2 py-1.5">
                       <button
                         onClick={() => selectRecordingId(rec.recording_id)}
-                        className="px-2 py-0.5 bg-brand/10 text-brand rounded text-[10px] hover:bg-brand/20"
+                        className="px-2 py-0.5 bg-brand-soft text-brand font-medium rounded text-[10px] hover:bg-brand hover:text-white transition-colors"
                       >
                         Use
                       </button>

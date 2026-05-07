@@ -103,7 +103,7 @@ export default function LiveCell({ uniqueId, recId, quality, onRemove }: LiveCel
 
   return (
     /* 라이브 셀 컨테이너 — 글래스 보더 + 라운딩 */
-    <div className="relative bg-black/50 border border-white/[0.08] rounded-xl overflow-hidden group">
+    <div className="relative bg-black border border-border rounded-md overflow-hidden group hover:border-border-strong transition-colors">
       {/* 비디오 엘리먼트 — mpegts.js 플레이어가 연결됨 */}
       <video
         ref={videoRef}
@@ -124,7 +124,7 @@ export default function LiveCell({ uniqueId, recId, quality, onRemove }: LiveCel
       {/* 스트림 상태 오버레이 — streaming/playing 외 상태일 때 글래스 배경으로 표시 */}
       {streamStatus && streamStatus !== "streaming" && streamStatus !== "playing" && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="bg-black/60 backdrop-blur-sm rounded-lg px-3 py-1.5 text-xs text-text-muted">
+          <span className="bg-black/70 rounded-md px-3 py-1.5 text-[11px] text-white/85 uppercase tracking-wider">
             {streamStatus}
           </span>
         </div>
@@ -138,13 +138,13 @@ export default function LiveCell({ uniqueId, recId, quality, onRemove }: LiveCel
       />
 
       {/* 정보 표시 바 — 녹화 ID, 품질, 닫기 버튼 (글래스 배경) */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white flex items-center justify-between">
-        <span className="font-mono bg-black/60 backdrop-blur-sm rounded-lg px-2 py-0.5">
-          {recId} [{quality.toUpperCase()}]
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 to-transparent p-2 text-[11px] text-white flex items-center justify-between pointer-events-none">
+        <span className="font-mono font-semibold tracking-tight">
+          {recId} <span className="opacity-70">[{quality.toUpperCase()}]</span>
         </span>
         <button
           onClick={() => onRemove(uniqueId)}
-          className="px-2 py-0.5 bg-status-error/80 text-white text-[10px] rounded hover:bg-status-error opacity-0 group-hover:opacity-100 transition"
+          className="pointer-events-auto px-2 py-0.5 bg-status-error/90 text-white text-[10px] font-medium rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-status-error"
         >
           Close
         </button>

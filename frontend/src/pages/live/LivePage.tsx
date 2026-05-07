@@ -18,7 +18,16 @@ import StatusBadge from "@/components/StatusBadge";
 import Toast from "@/components/Toast";
 import Button from "@/components/Button";
 import LiveCell from "@/pages/live/LiveCell";
-import { PlusIcon, VideoCameraIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import {
+  PlusIcon,
+  VideoCameraIcon,
+  ArrowPathIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+  ArrowsPointingOutIcon,
+  ArrowsPointingInIcon,
+  Squares2X2Icon,
+} from "@heroicons/react/24/outline";
 import {
   LIVE_REFRESH_INTERVAL_MS,
   MAX_LIVE_STREAMS,
@@ -64,6 +73,13 @@ export default function LivePage() {
 
   /* 플로팅 패널 접기 상태 */
   const [floatingMinimized, setFloatingMinimized] = useState(false);
+
+  /* 검색 / 레이아웃 / 포커스 모드 / 필터 / 선택 */
+  const [query, setQuery] = useState("");
+  const [layout, setLayout] = useState<"auto" | "1x1" | "2x2" | "3x3">("auto");
+  const [focusMode, setFocusMode] = useState(false);
+  const [filter, setFilter] = useState<"all" | "running" | "event" | "issues">("all");
+  const [selectedRecId, setSelectedRecId] = useState<string | null>(null);
 
   /* URL 파라미터에서 자동 스트림 추가 — ?id=xxx 형식 */
   useEffect(() => {
@@ -123,25 +139,165 @@ export default function LivePage() {
     }
   };
 
-  /* ── 그리드 크기 계산 — 스트림 수에 따라 1x1, 2x2, 3x3 자동 결정 ── */
-  const count = streams.length;
-  const cols = count <= 1 ? 1 : count <= 4 ? 2 : 3;
-  const rows = Math.ceil(count / cols);
+  /* ── 카운트 — recordings 기반 ── */
+  const isRunning = (r: Recording) => r.state === "RUNNING" || r.state === 2;
+  const isEvent = (r: Recording) => r.recording_mode === "EVENT";
+  const isError = (r: Recording) =>
+    r.state === "ERROR" || r.state === 4 || r.state === "STOPPED" || r.state === 3;
+  const runningCount = (recordings as Recording[]).filter(isRunning).length;
+  const eventCount = (recordings as Recording[]).filter(isEvent).length;
+  const errorCount = (recordings as Recording[]).filter(isError).length;
+
+  /* ── 검색 + 필터 ── */
+  const visibleStreams = streams.filter((s) => {
+    if (query.trim() && !s.recId.toLowerCase().includes(query.toLowerCase().trim())) return false;
+    if (filter !== "all") {
+      const rec = (recordings as Recording[]).find((r) => r.recording_id === s.recId);
+      if (!rec) return filter === "issues"; /* 매칭 안되면 issues에만 노출 */
+      if (filter === "running") return isRunning(rec) && !isEvent(rec);
+      if (filter === "event") return isEvent(rec);
+      if (filter === "issues") return isError(rec);
+    }
+    return true;
+  });
+
+  /* ── 선택된 카메라 정보 ── */
+  const selectedRec = selectedRecId
+    ? (recordings as Recording[]).find((r) => r.recording_id === selectedRecId)
+    : null;
+
+  /* ── 그리드 크기 계산 — auto일 때는 스트림 수에 따라 자동 ── */
+  const count = visibleStreams.length;
+  const cols =
+    layout === "1x1" ? 1 :
+    layout === "2x2" ? 2 :
+    layout === "3x3" ? 3 :
+    count <= 1 ? 1 : count <= 4 ? 2 : 3;
+  const rows =
+    layout === "1x1" ? 1 :
+    layout === "2x2" ? 2 :
+    layout === "3x3" ? 3 :
+    Math.ceil(Math.max(count, 1) / cols);
+
+  /* ── 레이아웃 토글 버튼 */
+  const LayoutBtn = ({
+    id,
+    label,
+  }: {
+    id: "auto" | "1x1" | "2x2" | "3x3";
+    label: string;
+  }) => (
+    <button
+      onClick={() => setLayout(id)}
+      className={`h-7 px-2.5 text-[11px] font-mono font-semibold rounded transition-colors ${
+        layout === id
+          ? "bg-text-primary text-bg-app"
+          : "text-text-muted hover:text-text-primary"
+      }`}
+      title={`Layout ${label}`}
+    >
+      {label}
+    </button>
+  );
+
+  /* ── 필터 칩 ── */
+  const FilterChip = ({
+    id,
+    label,
+    count,
+  }: {
+    id: "all" | "running" | "event" | "issues";
+    label: string;
+    count: number;
+  }) => (
+    <button
+      onClick={() => setFilter(id)}
+      className={`flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
+        filter === id
+          ? "bg-text-primary text-bg-app border-text-primary"
+          : "bg-bg-card text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary"
+      }`}
+    >
+      {label}
+      <span
+        className={`text-[10px] font-mono tabular px-1 py-0.5 rounded ${
+          filter === id ? "bg-white/20" : "bg-bg-app text-text-muted"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)]">
-      {/* ── 헤더 바 — 글래스모피즘 배경 ── */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-white/[0.02] backdrop-blur-xl border-b border-white/[0.06]">
-        <h1 className="text-sm font-bold text-text-primary">Live Grid</h1>
+    <div className="flex flex-col h-[calc(100vh-56px)] bg-bg-app">
+      {/* ── 헤더 바 ── */}
+      <div className="flex items-center gap-3 px-6 py-3 bg-bg-card border-b border-border">
+        <div>
+          <h1 className="text-[15px] font-semibold text-text-primary tracking-tight leading-none">Live grid</h1>
+          <div className="text-[11px] text-text-muted mt-1 tabular">
+            {streams.length} active stream{streams.length === 1 ? "" : "s"}
+            {query && ` · ${visibleStreams.length} matching“${query}”`}
+          </div>
+        </div>
+
+        {/* 검색 */}
+        <div className="flex items-center gap-2 ml-6 px-3 h-8 bg-bg-app border border-border rounded-md w-72">
+          <MagnifyingGlassIcon className="w-3.5 h-3.5 text-text-muted" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by recording ID…"
+            className="flex-1 bg-transparent border-none outline-none text-[12px] text-text-primary placeholder-text-muted"
+          />
+          {query && (
+            <button onClick={() => setQuery("")} className="text-text-muted hover:text-text-primary">
+              <XMarkIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* 필터 칩 */}
+        <div className="flex items-center gap-1.5 ml-2">
+          <FilterChip id="all" label="All" count={recordings.length} />
+          <FilterChip id="running" label="Continuous" count={Math.max(0, runningCount - eventCount)} />
+          <FilterChip id="event" label="Event" count={eventCount} />
+          <FilterChip id="issues" label="Issues" count={errorCount} />
+        </div>
+
         <div className="flex-1" />
+
+        {/* 레이아웃 토글 */}
+        <div className="flex items-center gap-1 px-1.5 h-8 bg-bg-app border border-border rounded-md">
+          <Squares2X2Icon className="w-3.5 h-3.5 text-text-muted ml-1" />
+          <LayoutBtn id="auto" label="AUTO" />
+          <LayoutBtn id="1x1" label="1×1" />
+          <LayoutBtn id="2x2" label="2×2" />
+          <LayoutBtn id="3x3" label="3×3" />
+        </div>
+
+        {/* 포커스 토글 */}
+        <button
+          onClick={() => setFocusMode((f) => !f)}
+          className={`flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-md border transition-colors ${
+            focusMode
+              ? "bg-text-primary text-bg-app border-text-primary"
+              : "bg-bg-card text-text-primary border-border hover:bg-bg-hover"
+          }`}
+        >
+          {focusMode ? <ArrowsPointingInIcon className="w-3.5 h-3.5" /> : <ArrowsPointingOutIcon className="w-3.5 h-3.5" />}
+          {focusMode ? "Exit" : "Focus"}
+        </button>
+
+        {/* 액션 */}
         <button
           onClick={() => {
             setViewRecId("");
             setViewModal(true);
           }}
-          className="flex items-center gap-1 px-3 py-1.5 bg-brand/10 text-brand text-xs rounded hover:bg-brand/20 transition"
+          className="flex items-center gap-1.5 h-8 px-3 bg-brand-soft text-brand text-[12px] font-medium rounded-md hover:bg-brand hover:text-white transition-colors"
         >
-          <PlusIcon className="w-4 h-4" /> View Live Stream
+          <PlusIcon className="w-3.5 h-3.5" /> Add stream
         </button>
         <button
           onClick={() => {
@@ -155,37 +311,136 @@ export default function LivePage() {
             });
             setAddModal(true);
           }}
-          className="flex items-center gap-1 px-3 py-1.5 bg-brand text-white text-xs rounded hover:bg-brand/80 transition"
+          className="flex items-center gap-1.5 h-8 px-3 bg-text-primary text-white text-[12px] font-medium rounded-md hover:bg-text-primary/90 transition-colors"
         >
-          <VideoCameraIcon className="w-4 h-4" /> Start Recording
+          <VideoCameraIcon className="w-3.5 h-3.5" /> Start recording
         </button>
       </div>
 
-      {/* ── 그리드 영역 ── */}
-      <div className="flex-1 p-2 overflow-hidden">
-        {count === 0 ? (
-          <div className="w-full h-full flex items-center justify-center text-text-muted text-sm">
-            활성 라이브 스트림이 없습니다. &quot;+ View Live Stream&quot;을 클릭하세요.
+      {/* ── 그리드 + 우측 상세 패널 ── */}
+      <div className="flex-1 flex overflow-hidden">
+      <div className={`${focusMode || streams.length === 0 ? "flex-1" : "flex-1"} p-3 overflow-hidden`}>
+        {streams.length === 0 ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-text-muted">
+            <VideoCameraIcon className="w-10 h-10 text-text-muted opacity-40" />
+            <div className="text-[13px]">활성 라이브 스트림이 없습니다</div>
+            <button
+              onClick={() => {
+                setViewRecId("");
+                setViewModal(true);
+              }}
+              className="text-[12px] text-brand hover:underline"
+            >
+              + Add a stream to start
+            </button>
+          </div>
+        ) : count === 0 ? (
+          <div className="w-full h-full flex items-center justify-center text-text-muted text-[13px]">
+            검색 결과 없음
+            <button onClick={() => setQuery("")} className="ml-2 text-brand hover:underline">Clear</button>
           </div>
         ) : (
           <div
-            className="w-full h-full grid gap-1"
+            className="w-full h-full grid gap-2"
             style={{
               gridTemplateColumns: `repeat(${cols}, 1fr)`,
               gridTemplateRows: `repeat(${rows}, 1fr)`,
             }}
           >
-            {streams.map((stream) => (
-              <LiveCell
+            {visibleStreams.map((stream) => (
+              <div
                 key={stream.uniqueId}
-                uniqueId={stream.uniqueId}
-                recId={stream.recId}
-                quality={stream.quality}
-                onRemove={removeStream}
-              />
+                onClick={() => setSelectedRecId(stream.recId)}
+                className={`relative ${selectedRecId === stream.recId ? "ring-2 ring-brand ring-offset-1 ring-offset-bg-app rounded-md" : ""}`}
+              >
+                <LiveCell
+                  uniqueId={stream.uniqueId}
+                  recId={stream.recId}
+                  quality={stream.quality}
+                  onRemove={removeStream}
+                />
+              </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* ── 우측 상세 패널 — focusMode가 아닐 때만 ── */}
+      {!focusMode && streams.length > 0 && (
+        <aside className="w-72 flex-shrink-0 bg-bg-sidebar border-l border-border overflow-y-auto">
+          {selectedRec ? (
+            <>
+              {/* 카메라 정보 */}
+              <div className="px-4 py-3 border-b border-border-subtle">
+                <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+                  Selected camera
+                </div>
+                <div className="font-mono text-[13px] font-semibold text-text-primary tracking-tight truncate">
+                  {selectedRec.recording_id}
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <StatusBadge state={selectedRec.state} />
+                  {selectedRec.recording_mode === "EVENT" && (
+                    <span className="text-[9px] px-1.5 py-0.5 bg-brand text-white rounded font-semibold uppercase tracking-wider">
+                      event
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 메트릭 */}
+              <div className="px-4 py-3 grid grid-cols-2 gap-y-3 gap-x-4 border-b border-border-subtle">
+                {[
+                  ["State", String(selectedRec.state)],
+                  ["Mode", selectedRec.recording_mode || "—"],
+                  ["FPS", selectedRec.jitter?.recent_fps != null ? selectedRec.jitter.recent_fps.toFixed(1) : "—"],
+                  ["NTP", selectedRec.ntp_synced ? "synced" : "—"],
+                  ["HQ limit", selectedRec.hq_storage_limit_mbs ? `${selectedRec.hq_storage_limit_mbs} MB` : "—"],
+                  ["SQ limit", selectedRec.sq_storage_limit_mbs ? `${selectedRec.sq_storage_limit_mbs} MB` : "—"],
+                ].map(([l, v]) => (
+                  <div key={l}>
+                    <div className="text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-0.5">{l}</div>
+                    <div className="font-mono text-[12px] tabular text-text-primary truncate">{v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 액션 */}
+              <div className="px-4 py-3 border-b border-border-subtle flex gap-2">
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem("target_id", selectedRec.recording_id);
+                    window.location.hash = "#/tester";
+                  }}
+                  className="flex-1 h-7 px-2 bg-text-primary text-white text-[11px] font-medium rounded hover:bg-text-primary/90 transition-colors"
+                >
+                  Snapshot
+                </button>
+                <button
+                  onClick={() => { window.location.hash = "#/playlist"; }}
+                  className="flex-1 h-7 px-2 bg-bg-card border border-border text-text-primary text-[11px] font-medium rounded hover:bg-bg-hover transition-colors"
+                >
+                  Playback
+                </button>
+              </div>
+
+              {/* 최근 이벤트 — placeholder, 실 데이터는 /events/recent?camera_id= 필요 */}
+              <div className="px-4 py-3">
+                <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-2">
+                  Recent events
+                </div>
+                <div className="text-[11px] text-text-muted py-3 text-center border border-dashed border-border rounded">
+                  no events
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="h-full flex items-center justify-center text-[12px] text-text-muted px-6 text-center">
+              그리드의 카메라를 선택하면<br />상세 정보가 표시됩니다.
+            </div>
+          )}
+        </aside>
+      )}
       </div>
 
       {/* ── 라이브 뷰 추가 모달 ── */}

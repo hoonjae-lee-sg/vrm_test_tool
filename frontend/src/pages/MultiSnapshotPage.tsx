@@ -28,6 +28,7 @@ import {
 import Toast from "@/components/Toast";
 import Button from "@/components/Button";
 import EmptyState from "@/components/EmptyState";
+import DriftBar from "@/components/DriftBar";
 import { CameraIcon, PhotoIcon } from "@heroicons/react/24/outline";
 import { formatNumber } from "@/utils/format";
 
@@ -259,10 +260,15 @@ export default function MultiSnapshotPage() {
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
-      {/* ── 좌측: 채널 선택 — 글래스모피즘 사이드바 ── */}
-      <div className="w-64 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] flex flex-col">
-        <div className="p-4 border-b border-white/[0.06]">
-          <h2 className="text-sm font-bold font-display text-text-primary mb-3">Channels</h2>
+      {/* ── 좌측: 채널 선택 — Studio 라이트 사이드바 ── */}
+      <div className="w-64 flex-shrink-0 bg-bg-sidebar border-r border-border flex flex-col">
+        <div className="p-4 border-b border-border-subtle">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+            Step 1
+          </div>
+          <h2 className="text-[15px] font-semibold font-display text-text-primary mb-3 tracking-tight">
+            Channels
+          </h2>
 
           {/* 전체 선택 */}
           <label className="flex items-center gap-2 mb-3 text-xs text-text-secondary cursor-pointer">
@@ -284,7 +290,7 @@ export default function MultiSnapshotPage() {
               runningRecordings.map((rec: Recording) => (
                 <label
                   key={rec.recording_id}
-                  className="flex items-center gap-2 p-2 bg-bg-app border border-border rounded text-xs cursor-pointer hover:border-brand/50 transition"
+                  className="flex items-center gap-2 p-2 bg-card border border-border rounded-md text-[12px] cursor-pointer hover:border-border-strong hover:bg-bg-hover transition-colors"
                 >
                   <input
                     type="checkbox"
@@ -335,7 +341,7 @@ export default function MultiSnapshotPage() {
 
         {/* ── 서버 상태 표시 (서버 모드 + 캡처 중일 때) ── */}
         {serverMode && isCapturing && serverStatus?.session && (
-          <div className="px-4 py-2 text-[10px] space-y-1 border-t border-white/[0.06]">
+          <div className="px-4 py-2 text-[11px] space-y-1 border-t border-border-subtle bg-bg-subtle">
             <div className="flex justify-between text-text-secondary">
               <span>캡처</span>
               <span className="font-mono text-text-primary">
@@ -394,11 +400,14 @@ export default function MultiSnapshotPage() {
         </div>
       </div>
 
-      {/* ── 중앙: 히스토리 목록 — 글래스모피즘 패널 ── */}
-      <div className="w-56 flex-shrink-0 bg-white/[0.02] backdrop-blur-xl border-r border-white/[0.06] flex flex-col">
-        <div className="p-3 border-b border-white/[0.06]">
-          <h3 className="text-xs font-bold font-display text-text-muted uppercase tracking-wider">
-            Capture History
+      {/* ── 중앙: 히스토리 목록 — 라이트 패널 ── */}
+      <div className="w-60 flex-shrink-0 bg-bg-sidebar border-r border-border flex flex-col">
+        <div className="px-4 py-3 border-b border-border-subtle">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+            Step 2
+          </div>
+          <h3 className="text-[13px] font-semibold text-text-primary tracking-tight">
+            Capture history
           </h3>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -413,16 +422,18 @@ export default function MultiSnapshotPage() {
                   /* 클릭 시 캡처 중지 */
                   if (isCapturing) stopCapture();
                 }}
-                /* 히스토리 항목 — 활성 시 네온 글로우 보더, 비활성 시 호버 효과 */
-                className={`p-2.5 rounded-lg cursor-pointer transition-all duration-150 text-xs hover:-translate-x-0.5 ${
+                /* 히스토리 항목 — 라이트 카드, 활성 시 indigo soft */
+                className={`px-3 py-2 rounded-md cursor-pointer transition-colors text-[12px] border ${
                   activeTimeKey === item.timeKey
-                    ? "bg-brand/10 border border-brand/40 text-white shadow-[0_0_15px_rgba(59,130,246,0.1)]"
-                    : "bg-bg-app border border-white/[0.06] text-text-secondary hover:bg-white/[0.04] hover:border-brand/30"
+                    ? "bg-brand-soft border-brand/30 text-text-primary"
+                    : "bg-card border-border text-text-secondary hover:border-border-strong hover:bg-bg-hover"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-brand">{item.displayTime}</span>
-                  <span className="text-text-muted text-[10px]">{item.camCount} cams</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`font-mono tabular ${activeTimeKey === item.timeKey ? "text-brand font-semibold" : "text-text-primary"}`}>
+                    {item.displayTime}
+                  </span>
+                  <span className="text-text-muted text-[10px] tabular shrink-0">{item.camCount}ch</span>
                 </div>
               </div>
             ))
@@ -431,57 +442,137 @@ export default function MultiSnapshotPage() {
       </div>
 
       {/* ── 우측: 스냅샷 그리드 뷰 ── */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-6 py-5">
         {activeItem ? (
           <>
-            <div className="mb-4">
-              <h2 className="text-lg font-bold font-display text-text-primary">{activeItem.displayTime}</h2>
-              <p className="text-xs text-text-muted">
-                Channels: {activeItem.camCount}
-              </p>
+            <div className="mb-5 flex items-baseline gap-3">
+              <h2 className="text-[20px] font-semibold font-display text-text-primary tracking-tight">
+                {activeItem.displayTime}
+              </h2>
+              <span className="text-[12px] text-text-muted tabular">
+                {activeItem.camCount} channels captured
+              </span>
+              {activeItem.masterId && (
+                <span className="ml-auto text-[11px] text-text-muted tabular">
+                  master · <span className="font-mono text-text-secondary">{activeItem.masterId}</span>
+                </span>
+              )}
             </div>
             {/* 동기화 경고 배너 */}
             {activeItem.syncWarnings && activeItem.syncWarnings.length > 0 && (
-              <div className="mb-3 p-2 bg-status-error/10 border border-status-error/30 rounded-lg">
+              <div className="mb-4 px-3 py-2 bg-status-error-soft border border-status-error/20 rounded-md">
                 {activeItem.syncWarnings.map((w, i) => (
-                  <p key={i} className="text-xs text-status-error">{w}</p>
+                  <p key={i} className="text-[12px] text-status-error">{w}</p>
                 ))}
               </div>
             )}
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {Object.entries(activeItem.data).map(([rid, snap]) => (
-                /* 스냅샷 이미지 카드 — 글래스 보더 + 동기화 실패 시 에러 보더 */
+                /* 스냅샷 이미지 카드 — 라이트 카드 + 동기화 실패 시 에러 보더 + master에 강조 보더 */
                 <div
                   key={rid}
-                  className={`bg-black rounded-xl border overflow-hidden relative ${
-                    snap.is_pts_synced === false ? "border-status-error/50" : "border-white/[0.08]"
+                  className={`bg-card rounded-md border-2 overflow-hidden ${
+                    snap.is_pts_synced === false
+                      ? "border-status-error/40"
+                      : rid === activeItem.masterId
+                        ? "border-brand"
+                        : "border-border"
                   }`}
                 >
-                  <div className="absolute top-1.5 left-1.5 flex items-center gap-1 z-10">
-                    <span className="bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                      {rid}
-                    </span>
-                    {/* MASTER 배지 — 브랜드 네온 글로우 */}
-                    {rid === activeItem.masterId && (
-                      <span className="bg-brand/80 text-white text-[9px] px-1 py-0.5 rounded font-bold shadow-[0_0_8px_rgba(59,130,246,0.4)]">
-                        MASTER
+                  <div className="relative bg-black">
+                    <div className="absolute top-2 left-2 flex items-center gap-1 z-10">
+                      <span className="bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                        {rid}
+                      </span>
+                      {rid === activeItem.masterId && (
+                        <span className="bg-brand text-white text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider">
+                          Master
+                        </span>
+                      )}
+                      {snap.is_pts_synced === false && (
+                        <span className="bg-status-error text-white text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider">
+                          No sync
+                        </span>
+                      )}
+                    </div>
+                    {snap.auto_sync_offset_ms != null && (
+                      <span className="absolute top-2 right-2 z-10 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono tabular">
+                        {snap.auto_sync_offset_ms > 0 ? "+" : ""}
+                        {snap.auto_sync_offset_ms}ms
                       </span>
                     )}
-                    {/* NO SYNC 배지 — 에러 네온 글로우 */}
-                    {snap.is_pts_synced === false && (
-                      <span className="bg-status-error/80 text-white text-[9px] px-1 py-0.5 rounded font-bold shadow-[0_0_8px_rgba(239,68,68,0.4)]">
-                        NO SYNC
-                      </span>
-                    )}
+                    <img
+                      src={snap.image_data}
+                      alt={`snapshot-${rid}`}
+                      className="w-full aspect-video object-cover"
+                    />
                   </div>
-                  <img
-                    src={snap.image_data}
-                    alt={`snapshot-${rid}`}
-                    className="w-full aspect-video object-cover"
-                  />
                 </div>
               ))}
             </div>
+
+            {/* Per-camera drift 차트 */}
+            {(() => {
+              /* master ID와 각 카메라의 offset 추출 */
+              const masterId = activeItem.masterId;
+              const rows = Object.entries(activeItem.data).map(([rid, snap]) => {
+                const offset = snap.auto_sync_offset_ms ?? 0;
+                return { rid, offset, isMaster: rid === masterId, synced: snap.is_pts_synced !== false };
+              });
+              const maxAbs = Math.max(10, ...rows.map((r) => Math.abs(r.offset)));
+              return (
+                <div className="mt-6 bg-card border border-border rounded-md overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border-subtle flex items-baseline justify-between">
+                    <h3 className="text-[13px] font-semibold text-text-primary tracking-tight">
+                      Per-camera drift
+                    </h3>
+                    <span className="text-[11px] text-text-muted tabular">
+                      relative to master · max |drift| {maxAbs}ms
+                    </span>
+                  </div>
+                  <div className="px-4 py-3 space-y-1.5">
+                    {rows.map((r) => (
+                      <div
+                        key={r.rid}
+                        className="grid grid-cols-[140px_1fr_60px_70px] gap-3 items-center text-[12px] py-1"
+                      >
+                        <div className="font-mono text-text-primary truncate flex items-center gap-1.5">
+                          {r.rid}
+                          {r.isMaster && (
+                            <span className="text-[8px] px-1.5 py-0.5 bg-brand text-white rounded font-semibold uppercase tracking-wider">
+                              ref
+                            </span>
+                          )}
+                        </div>
+                        <DriftBar
+                          diffMs={r.offset}
+                          maxScaleMs={maxAbs * 1.1}
+                          isMaster={r.isMaster}
+                        />
+                        <div className="text-right font-mono tabular text-text-secondary">
+                          {r.isMaster ? "0" : (r.offset > 0 ? "+" : "")}
+                          {r.offset}<span className="text-text-muted ml-0.5">ms</span>
+                        </div>
+                        <div className={`text-center text-[10px] font-semibold uppercase tracking-wider ${
+                          !r.synced ? "text-status-error" : Math.abs(r.offset) <= 10 ? "text-status-running" : Math.abs(r.offset) <= 30 ? "text-brand" : "text-status-pending"
+                        }`}>
+                          {!r.synced ? "no sync" : Math.abs(r.offset) <= 10 ? "perfect" : Math.abs(r.offset) <= 30 ? "good" : "warn"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Session metadata 푸터 */}
+                  <div className="px-4 py-2 border-t border-border-subtle bg-bg-subtle text-[10px] text-text-muted font-mono tabular flex justify-between">
+                    <span className="truncate">
+                      /sessions/{activeItem.timeKey}/
+                    </span>
+                    <span>
+                      {Object.keys(activeItem.data).length} files · JPEG
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </>
         ) : (
           <EmptyState icon={<PhotoIcon className="w-12 h-12 text-text-muted/40" />} message="캡처를 시작하거나 히스토리에서 항목을 선택하세요" />
