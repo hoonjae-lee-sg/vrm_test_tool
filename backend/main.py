@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.routers import recording, snapshot, clip, health, websocket
+from backend.routers import recording, snapshot, clip, health, websocket, metrics, events, sync
 
 app = FastAPI(
     title="VRM Test Tool API",
@@ -34,6 +34,11 @@ app.include_router(snapshot.router)
 app.include_router(clip.router)
 app.include_router(health.router)
 app.include_router(websocket.router)
+# 신규 — FleetMetrics / Events 프록시 (S3).
+app.include_router(metrics.router)
+app.include_router(events.router)
+# 신규 — Sync Lab (S5). FastAPI 단독, snapshot_receiver 디스크 출력 직접 walk.
+app.include_router(sync.router)
 
 # 프로덕션: React 빌드 결과물 정적 파일 서빙
 _frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")

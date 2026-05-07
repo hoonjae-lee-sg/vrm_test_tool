@@ -55,7 +55,9 @@ echo "Running protoc compiler..."
     ${PROTO_TOOL_DIR}/video_recorder/recorder/clip.proto \
     ${PROTO_TOOL_DIR}/video_recorder/recorder/encoding.proto \
     ${PROTO_TOOL_DIR}/video_recorder/recorder/record.proto \
-    ${PROTO_TOOL_DIR}/video_recorder/recorder/snapshot.proto
+    ${PROTO_TOOL_DIR}/video_recorder/recorder/snapshot.proto \
+    ${PROTO_TOOL_DIR}/video_recorder/metrics/fleet.proto \
+    ${PROTO_TOOL_DIR}/video_recorder/events/events.proto
 
 # Create __init__.py files
 echo "Creating __init__.py files..."
@@ -64,6 +66,8 @@ touch ${PROTO_TOOL_DIR}/video_recorder/__init__.py
 touch ${PROTO_TOOL_DIR}/video_recorder/common/__init__.py
 touch ${PROTO_TOOL_DIR}/video_recorder/health/__init__.py
 touch ${PROTO_TOOL_DIR}/video_recorder/recorder/__init__.py
+touch ${PROTO_TOOL_DIR}/video_recorder/metrics/__init__.py
+touch ${PROTO_TOOL_DIR}/video_recorder/events/__init__.py
 
 echo "✅ Python code generated successfully."
 echo ""

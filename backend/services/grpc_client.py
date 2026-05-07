@@ -19,6 +19,10 @@ from video_recorder.recorder import snapshot_pb2, snapshot_pb2_grpc
 from video_recorder.recorder import encoding_pb2
 from video_recorder.health import health_pb2, health_pb2_grpc
 from video_recorder.common import types_pb2
+# === FleetMetrics / Events 신규 stub (S2 atfr-core 추가분) ===
+# protoc 재생성 필요 — sync_protos.sh 실행 후 사용 가능.
+from video_recorder.metrics import fleet_pb2, fleet_pb2_grpc
+from video_recorder.events import events_pb2, events_pb2_grpc
 
 
 def proto_to_dict(message):
@@ -57,6 +61,9 @@ class GRPCClientService:
         self.clip_stub = clip_pb2_grpc.ClipStub(self.channel)
         self.snapshot_stub = snapshot_pb2_grpc.SnapshotStub(self.channel)
         self.health_stub = health_pb2_grpc.HealthStub(self.channel)
+        # 신규 — FleetMetrics / Events 스텁.
+        self.fleet_stub = fleet_pb2_grpc.FleetMetricsStub(self.channel)
+        self.events_stub = events_pb2_grpc.EventsStub(self.channel)
         print(f"[GRPCClientService] Connected to {address}")
 
     def start_recording(
@@ -204,6 +211,141 @@ class GRPCClientService:
         )
         response = self.health_stub.GetRecordingHealthy(request)
         return proto_to_dict(response)
+
+    # ===== FleetMetrics =====
+    # API_REQUIREMENTS §2.1 — Dashboard KPI + 24h sparkline.
+    # NaN 인코딩 — proxy 단에서 None 으로 직렬화하여 frontend null 매핑.
+    def get_fleet_metrics(self):
+        request = fleet_pb2.GetFleetMetricsReq()
+        response = self.fleet_stub.GetFleetMetrics(request)
+        if response.HasField("error"):
+            raise Exception(f"FleetMetrics error: {response.error.message}")
+        d = proto_to_dict(response.payload)
+        # NaN → None 변환 (proto float NaN은 dict 변환 시 'NaN' 문자열로 바뀜).
+        sp = d.get("sparklines", {})
+        for key in ("bitrate_24h", "drift_24h", "frames_24h"):
+            arr = sp.get(key, []) or []
+            sp[key] = [None if (isinstance(v, float) and v != v) or v == "NaN" else v for v in arr]
+        return d
+
+    # API_REQUIREMENTS §2.2 — 시계열 처리량.
+    def get_throughput(self, range_str: str = "1h", bucket_seconds: int = 60):
+        # range 문자열 → enum.
+        range_map = {
+            "1h":  fleet_pb2.RANGE_1H,
+            "6h":  fleet_pb2.RANGE_6H,
+            "24h": fleet_pb2.RANGE_24H,
+        }
+        request = fleet_pb2.GetThroughputReq(
+            range=range_map.get(range_str, fleet_pb2.RANGE_1H),
+            bucket_seconds=bucket_seconds,
+        )
+        response = self.fleet_stub.GetThroughput(request)
+        if response.HasField("error"):
+            raise Exception(f"Throughput error: {response.error.message}")
+        return proto_to_dict(response.payload)
+
+    # API_REQUIREMENTS §2.4 — 디스크 사용량.
+    def get_storage_usage(self):
+        request = fleet_pb2.GetStorageUsageReq()
+        response = self.fleet_stub.GetStorageUsage(request)
+        if response.HasField("error"):
+            raise Exception(f"StorageUsage error: {response.error.message}")
+        return proto_to_dict(response.payload)
+
+    # API_REQUIREMENTS §4.1 — 카메라 단일 상세 메트릭.
+    def get_recording_metrics(self, recording_id: str):
+        request = fleet_pb2.GetRecordingMetricsReq(recording_id=recording_id)
+        response = self.fleet_stub.GetRecordingMetrics(request)
+        if response.HasField("error"):
+            raise Exception(f"RecordingMetrics error: {response.error.message}")
+        return proto_to_dict(response.payload)
+
+    # ===== Events =====
+    # API_REQUIREMENTS §2.3 보강 — server streaming. 호출자 (FastAPI SSE) 에서 yield.
+    # 반환: pb::Event 메시지 yield (filter 그대로 서버로 전달).
+    def stream_events(self, recording_id: str = None, severity: list = None):
+        kwargs = {}
+        if recording_id:
+            kwargs["recording_id"] = recording_id
+        if severity:
+            sev_map = {
+                "info":  events_pb2.SEV_INFO,
+                "warn":  events_pb2.SEV_WARN,
+                "error": events_pb2.SEV_ERROR,
+            }
+            kwargs["severity"] = [sev_map[s] for s in severity if s in sev_map]
+        request = events_pb2.StreamEventsReq(**kwargs)
+        # gRPC 응답 stream — generator 그대로 반환. 호출자에서 for-loop iterate.
+        return self.events_stub.StreamEvents(request)
+
+    # API_REQUIREMENTS §2.3 — 이벤트 피드.
+    def get_recent_events(
+        self,
+        limit: int = 20,
+        recording_id: str = None,
+        severity: list = None,
+        since_iso: str = None,
+    ):
+        kwargs = {"limit": limit}
+        if recording_id:
+            kwargs["recording_id"] = recording_id
+        if severity:
+            sev_map = {
+                "info":  events_pb2.SEV_INFO,
+                "warn":  events_pb2.SEV_WARN,
+                "error": events_pb2.SEV_ERROR,
+            }
+            kwargs["severity"] = [sev_map[s] for s in severity if s in sev_map]
+        if since_iso:
+            from datetime import datetime, timezone
+            # ISO8601 ("...Z") 또는 offset 포함 모두 허용. timezone 미지정시 UTC 가정.
+            dt = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            ts = timestamp_pb2.Timestamp()
+            ts.FromDatetime(dt)
+            kwargs["since"] = ts
+
+        request = events_pb2.GetRecentEventsReq(**kwargs)
+        response = self.events_stub.GetRecentEvents(request)
+        if response.HasField("error"):
+            raise Exception(f"Events error: {response.error.message}")
+
+        # 응답 변환 — meta_json 문자열을 dict로 파싱, type/severity enum을 frontend 문자열로.
+        import json
+        type_name = {
+            events_pb2.STREAM_LOST:      "STREAM_LOST",
+            events_pb2.STREAM_RECOVERED: "STREAM_RECOVERED",
+            events_pb2.EVENT_TRIGGERED:  "EVENT_TRIGGERED",
+            events_pb2.EVENT_CLIP_SAVED: "EVENT_CLIP_SAVED",
+            events_pb2.DRIFT_WARN:       "DRIFT_WARN",
+            events_pb2.DISK_THRESHOLD:   "DISK_THRESHOLD",
+            events_pb2.RESTART:          "RESTART",
+        }
+        sev_name = {
+            events_pb2.SEV_INFO:  "info",
+            events_pb2.SEV_WARN:  "warn",
+            events_pb2.SEV_ERROR: "error",
+        }
+        events_out = []
+        for ev in response.payload.events:
+            meta = {}
+            if ev.meta_json:
+                try:
+                    meta = json.loads(ev.meta_json)
+                except Exception:
+                    meta = {}
+            events_out.append({
+                "id":           ev.id,
+                "ts":           ev.ts.ToDatetime().isoformat().replace("+00:00", "") + "Z" if ev.ts.seconds else None,
+                "recording_id": ev.recording_id,
+                "type":         type_name.get(ev.type, "UNSPECIFIED"),
+                "severity":     sev_name.get(ev.severity, "info"),
+                "message":      ev.message,
+                "meta":         meta,
+            })
+        return {"events": events_out, "total": int(response.payload.total)}
 
 
 def get_grpc_client() -> GRPCClientService:
