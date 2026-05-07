@@ -14,16 +14,16 @@ import { DASHBOARD_REFRESH_INTERVAL_MS } from "@/constants";
 import { formatNumber } from "@/utils/format";
 import mpegts from "mpegts.js";
 import StatusBadge from "@/components/StatusBadge";
-import StatCard from "@/components/StatCard";
 import FormField from "@/components/FormField";
 import Modal from "@/components/Modal";
 import Toast from "@/components/Toast";
 import Button from "@/components/Button";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/EmptyState";
+import Sparkline from "@/components/Sparkline";
+import { deriveFleetKpi, useThroughput, useRecentEvents } from "@/hooks/useFleetMetrics";
 import {
   VideoCameraIcon,
-  ExclamationTriangleIcon,
   CameraIcon,
   PlusIcon,
   XMarkIcon,
@@ -206,6 +206,12 @@ export default function DashboardPage() {
   const total = recordings.length;
   const running = recordings.filter((r: Recording) => r.state === "RUNNING").length;
   const errors = recordings.filter((r: Recording) => r.state === "ERROR").length;
+  const stopped = recordings.filter((r: Recording) => r.state === "STOPPED").length;
+
+  /* 플리트 메트릭 — KPI / Throughput / 최근 이벤트 (시계열은 API 붙기 전까지 빈 상태) */
+  const kpi = useMemo(() => deriveFleetKpi(recordings), [recordings]);
+  const throughput = useThroughput();
+  const { events: recentEvents } = useRecentEvents(5);
 
   /* ── 모달 열기 — 폼 초기화 및 오류 상태 클리어 ── */
   const openModal = () => {
@@ -301,11 +307,13 @@ export default function DashboardPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
+    <div className="px-6 py-5 max-w-[1400px] mx-auto">
       {/* ── 헤더 ── */}
-      <div className="flex items-center justify-between mb-6">
-        {/* 페이지 제목 — Mission Control 디스플레이 폰트 적용 */}
-        <h1 className="text-2xl font-bold font-display text-text-primary">Dashboard</h1>
+      <div className="flex items-end justify-between mb-5">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mb-1">Operations</div>
+          <h1 className="text-[24px] leading-tight font-semibold font-display text-text-primary tracking-tight">Camera fleet</h1>
+        </div>
         <div className="flex items-center gap-2">
           {cameraOrder.length > 0 && (
             <Button variant="ghost" size="sm" onClick={resetCameraOrder}>
@@ -318,14 +326,156 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── 통계 카드 — 상단 브랜드 그라데이션 배경 영역 ── */}
-      <div className="bg-gradient-to-b from-brand/[0.03] to-transparent pb-6 -mx-6 px-6">
-      <div className="grid grid-cols-3 gap-4 mb-0">
-        <StatCard icon={<VideoCameraIcon className="w-5 h-5 text-brand" />} label="Total Cameras" value={formatNumber(total)} colorClass="text-text-primary" />
-        <StatCard icon={<VideoCameraIcon className="w-5 h-5 text-status-running" />} label="Active" value={formatNumber(running)} colorClass="text-status-running" />
-        <StatCard icon={<ExclamationTriangleIcon className="w-5 h-5 text-status-error" />} label="Errors" value={formatNumber(errors)} colorClass="text-status-error" />
+      {/* ── KPI 카드 — 4열 + sparkline ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <KpiCard
+          label="Cameras online"
+          value={formatNumber(kpi.camerasOnline)}
+          unit={`/ ${kpi.camerasTotal}`}
+          spark={kpi.camerasOnlineSeries}
+          color="#16A34A"
+        />
+        <KpiCard
+          label="Aggregate bitrate"
+          value={kpi.aggregateBitrateMbps !== null ? kpi.aggregateBitrateMbps.toFixed(1) : "—"}
+          unit="Mbps"
+          spark={kpi.bitrateSeries}
+          color="#1F4FE8"
+        />
+        <KpiCard
+          label="Mean drift (24h)"
+          value={kpi.meanDriftMs !== null ? kpi.meanDriftMs.toFixed(1) : "—"}
+          unit="ms"
+          spark={kpi.driftSeries}
+          color="#0E1116"
+        />
+        <KpiCard
+          label="Disk used"
+          value={kpi.diskUsedPct !== null ? String(kpi.diskUsedPct) : "—"}
+          unit="%"
+          spark={kpi.diskSeries}
+          color="#F59E0B"
+        />
       </div>
+
+      {/* ── Throughput + Recent activity 행 ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-5">
+        {/* Throughput · last 60 min */}
+        <div className="lg:col-span-2 bg-card border border-border rounded-md p-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="text-[13px] font-semibold text-text-primary">Throughput · last 60 min</div>
+            {throughput.peakMbps !== null && (
+              <div className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
+                peak {throughput.peakMbps.toFixed(1)} Mbps
+              </div>
+            )}
+          </div>
+          <div className="relative h-[120px] mb-3 -mx-1">
+            {throughput.bitrateSeries ? (
+              <svg width="100%" height="120" preserveAspectRatio="none" viewBox="0 0 600 120" className="overflow-visible">
+                {(() => {
+                  const data = throughput.bitrateSeries;
+                  const max = Math.max(...data, 1);
+                  const min = Math.min(...data, 0);
+                  const range = max - min || 1;
+                  const w = 600, h = 120;
+                  const pts = data.map((v, i) => {
+                    const x = (i / (data.length - 1)) * w;
+                    const y = h - ((v - min) / range) * (h - 8) - 4;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                  }).join(" ");
+                  return (
+                    <>
+                      <polygon points={`0,${h} ${pts} ${w},${h}`} fill="#1F4FE8" opacity="0.12" />
+                      <polyline points={pts} fill="none" stroke="#1F4FE8" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+                    </>
+                  );
+                })()}
+              </svg>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-[10px] font-mono text-text-muted/60 uppercase tracking-wider">throughput series unavailable · GET /metrics/throughput</div>
+              </div>
+            )}
+            {throughput.bitrateSeries === null && (
+              <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border" />
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-[11px] pt-3 border-t border-border-subtle">
+            <div>
+              <div className="text-text-muted mb-0.5">Frames in</div>
+              <div className="font-mono font-semibold text-text-primary tabular">
+                {throughput.framesIn !== null ? formatNumber(throughput.framesIn) : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-text-muted mb-0.5">Dropped</div>
+              <div className="font-mono font-semibold tabular text-status-warning">
+                {throughput.framesDropped !== null
+                  ? `${formatNumber(throughput.framesDropped)} (${throughput.dropPct?.toFixed(2)}%)`
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-text-muted mb-0.5">Active streams</div>
+              <div className="font-mono font-semibold text-text-primary tabular">{running}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent activity */}
+        <div className="bg-card border border-border rounded-md p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[13px] font-semibold text-text-primary">Recent activity</div>
+            <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">last 24h</span>
+          </div>
+          {recentEvents.length === 0 ? (
+            <div className="text-[11px] text-text-muted py-6 text-center">
+              No events to display.
+              <div className="text-[10px] text-text-muted/70 mt-1 font-mono">/events/recent</div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {recentEvents.map((e, i) => (
+                <div key={i} className="flex gap-3 items-start">
+                  <div className="text-[10px] font-mono text-text-muted w-9 pt-0.5">{e.time}</div>
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
+                      e.tone === "ok" ? "bg-status-running"
+                      : e.tone === "warn" ? "bg-status-warning"
+                      : e.tone === "error" ? "bg-status-error"
+                      : e.tone === "info" ? "bg-brand"
+                      : "bg-text-muted"
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[12px] font-medium text-text-primary truncate ${e.title.startsWith("CAM-") ? "font-mono" : ""}`}>
+                      {e.title}
+                    </div>
+                    <div className="text-[11px] text-text-muted mt-0.5">{e.subtitle}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* ── 카메라 그리드 헤더 — 상태 칩 ── */}
+      {recordings.length > 0 && (
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="text-[13px] font-semibold text-text-primary">Cameras</div>
+            <div className="flex gap-1.5 text-[10px] font-mono">
+              <span className="px-2 py-0.5 rounded-full bg-status-running/10 text-status-running font-semibold">● {running} running</span>
+              {errors > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-status-error/10 text-status-error font-semibold">● {errors} error</span>
+              )}
+              <span className="px-2 py-0.5 rounded-full bg-bg-app text-text-muted font-semibold">● {stopped} stopped</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 카메라 그리드 (드래그 재정렬 지원) ── */}
       {recordings.length === 0 ? (
@@ -335,7 +485,7 @@ export default function DashboardPage() {
           action={{ label: "녹화 시작", onClick: () => setModalOpen(true) }}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {sortedRecordings.map((rec: Recording, i: number) => (
             <div
               key={rec.recording_id}
@@ -344,8 +494,8 @@ export default function DashboardPage() {
               onDragOver={(e) => handleDragOver(e, i)}
               onDrop={() => handleDrop(i)}
               onDragEnd={handleDragEnd}
-              className={`transition-all duration-200 cursor-grab active:cursor-grabbing ${
-                dragOverIdx === i ? "ring-2 ring-brand/50 scale-[0.97] rounded-2xl" : ""
+              className={`transition-all duration-150 cursor-grab active:cursor-grabbing rounded-md ${
+                dragOverIdx === i ? "ring-2 ring-brand/40" : ""
               } ${dragIdx === i ? "opacity-40" : ""}`}
             >
             <CameraCard
@@ -384,7 +534,7 @@ export default function DashboardPage() {
               setDrawerOpen(true);
               setPresets(loadPresets());
             }}
-            className="text-xs text-brand hover:underline"
+            className="text-[12px] font-semibold text-brand hover:text-brand-hover transition-colors"
           >
             프리셋 관리
           </button>
@@ -431,37 +581,41 @@ export default function DashboardPage() {
       {/* ── 프리셋 드로어 ── */}
       {drawerOpen && (
         <div className="fixed inset-0 z-[60]" onClick={() => setDrawerOpen(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          {/* 프리셋 드로어 — 글래스모피즘 배경 */}
+          <div className="absolute inset-0 bg-black/30" />
           <div
-            className="absolute right-0 top-0 h-full w-80 bg-[#0d1220]/95 backdrop-blur-xl border-l border-white/[0.08] p-4 overflow-y-auto"
+            className="absolute right-0 top-0 h-full w-80 bg-bg-card border-l border-border p-4 overflow-y-auto shadow-card-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-text-primary">프리셋 목록</h3>
-              <button onClick={() => setDrawerOpen(false)} className="text-text-muted hover:text-text-primary"><XMarkIcon className="w-4 h-4" /></button>
+              <h3 className="text-[14px] font-semibold font-display text-text-primary tracking-tight">프리셋 목록</h3>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="h-7 w-7 inline-flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+              >
+                <XMarkIcon className="w-4 h-4" />
+              </button>
             </div>
             {presets.length === 0 ? (
-              <p className="text-text-muted text-xs">저장된 프리셋이 없습니다.</p>
+              <p className="text-text-muted text-[12px]">저장된 프리셋이 없습니다.</p>
             ) : (
               <div className="space-y-2">
                 {presets.map((p, i) => (
                   <div
                     key={i}
-                    className="p-3 bg-bg-app border border-border rounded-lg cursor-pointer hover:border-brand transition"
+                    className="px-3 py-2.5 bg-card border border-border rounded-md cursor-pointer hover:border-border-strong hover:bg-bg-hover transition-colors"
                     onClick={() => applyPreset(p)}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-text-primary font-medium">★ {p.name}</span>
+                      <span className="text-[13px] text-text-primary font-medium">{p.name}</span>
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(i); }}
-                        className="text-xs text-status-error hover:underline"
+                        className="text-[11px] text-status-error hover:underline"
                       >
                         삭제
                       </button>
                     </div>
-                    <div className="text-xs text-text-muted mt-1 truncate">
-                      {p.data["hq-url"]?.substring(0, 40)}...
+                    <div className="text-[11px] text-text-muted mt-1 truncate font-mono">
+                      {p.data["hq-url"]?.substring(0, 40)}…
                     </div>
                   </div>
                 ))}
@@ -508,6 +662,34 @@ export default function DashboardPage() {
       />
 
       {toast && <Toast message={toast.message} type={toast.type} />}
+    </div>
+  );
+}
+
+/* ────────────────── KPI 카드 — sparkline 포함 ────────────────── */
+function KpiCard({
+  label,
+  value,
+  unit,
+  spark,
+  color,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  spark?: number[] | null;
+  color: string;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-md px-4 py-3.5">
+      <div className="text-[11px] text-text-muted mb-2">{label}</div>
+      <div className="flex items-end justify-between gap-2">
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span className="text-[28px] leading-none font-semibold tracking-tight tabular text-text-primary">{value}</span>
+          {unit && <span className="text-[12px] text-text-muted font-medium">{unit}</span>}
+        </div>
+        <Sparkline data={spark} color={color} width={72} height={28} />
+      </div>
     </div>
   );
 }
@@ -677,8 +859,12 @@ function CameraCard({
     : "N/A";
 
   return (
-    /* 카메라 카드 — 글래스모피즘 스타일 + RUNNING 시 녹색 보더 글로우 */
-    <div className={`bg-white/[0.03] backdrop-blur-xl border rounded-2xl overflow-hidden hover:bg-white/[0.05] hover:border-white/[0.15] hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 transition-all duration-200 ${state === "RUNNING" ? "border-status-running/20" : "border-white/[0.08]"}`}>
+    /* 카메라 카드 — Studio 라이트 카드 + RUNNING 시 상단 랜 표시 */
+    <div
+      className={`bg-card border rounded-md overflow-hidden hover:border-border-strong hover:shadow-card-md transition-shadow duration-150 ${
+        state === "RUNNING" ? "border-status-running/30" : "border-border"
+      }`}
+    >
       {/* 비디오 프리뷰 영역 */}
       <div className="aspect-video bg-black relative">
         <video
@@ -698,49 +884,49 @@ function CameraCard({
         <div className="absolute bottom-0 inset-x-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
         {/* 스트림 상태 오버레이 */}
         {state === "RUNNING" && streamStatus && streamStatus !== "streaming" && streamStatus !== "playing" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-[10px] text-text-muted pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-[11px] text-white/80 pointer-events-none uppercase tracking-wider">
             {streamStatus}
           </div>
         )}
       </div>
 
       {/* 정보 영역 */}
-      <div className="p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-mono text-text-primary truncate max-w-[60%]" title={recId}>
+      <div className="px-3 py-3 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[12px] font-mono text-text-primary truncate flex-1" title={recId}>
             {recId}
           </span>
           <StatusBadge state={state} />
         </div>
 
-        <div className="grid grid-cols-2 gap-x-4 text-xs text-text-muted">
+        <div className="grid grid-cols-2 gap-x-3 text-[11px]">
           <div>
-            <span className="text-text-secondary">Created</span>
-            <div className="text-text-primary">{createdAt}</div>
+            <div className="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-0.5">Created</div>
+            <div className="text-text-primary tabular">{createdAt}</div>
           </div>
           <div>
-            <span className="text-text-secondary">Mode</span>
+            <div className="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-0.5">Mode</div>
             <div className="text-text-primary">{recording.recording_mode || "N/A"}</div>
           </div>
         </div>
 
-        {/* 액션 버튼 — 글래스 구분선 영역 */}
-        <div className="flex gap-2 pt-2 mt-1 border-t border-white/[0.06]">
+        {/* 액션 버튼 */}
+        <div className="flex gap-1.5 pt-2 mt-1 border-t border-border-subtle">
           {/* RUNNING 상태 전용 버튼 — Live View, Snapshot */}
           {state === "RUNNING" && (
             <>
               <a
                 href={`/live?id=${recId}`}
-                className="flex-1 text-center px-2 py-1.5 bg-brand/10 text-brand text-xs rounded hover:bg-brand/20 transition"
+                className="flex-1 inline-flex items-center justify-center h-7 px-2 bg-brand-soft text-brand text-[11px] font-medium rounded-md hover:bg-brand hover:text-white transition-colors"
               >
-                Live View
+                Live
               </a>
               <button
                 onClick={handleSnapshot}
                 disabled={snapping}
-                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-card-hover text-text-secondary text-xs rounded hover:text-text-primary transition disabled:opacity-50"
+                className="flex-1 inline-flex items-center justify-center gap-1 h-7 px-2 bg-bg-hover text-text-secondary text-[11px] rounded-md hover:bg-card-hover hover:text-text-primary transition-colors disabled:opacity-50"
               >
-                {snapping ? <><CameraIcon className="w-3.5 h-3.5 animate-pulse" />...</> : <><CameraIcon className="w-3.5 h-3.5" /> Snapshot</>}
+                {snapping ? <><CameraIcon className="w-3.5 h-3.5 animate-pulse" />…</> : <><CameraIcon className="w-3.5 h-3.5" /> Snap</>}
               </button>
             </>
           )}
@@ -753,7 +939,7 @@ function CameraCard({
           <a
             href="/tester"
             onClick={() => sessionStorage.setItem("target_id", recId)}
-            className="flex-1 text-center px-2 py-1.5 bg-card-hover text-text-secondary text-xs rounded hover:text-text-primary transition"
+            className="flex-1 inline-flex items-center justify-center h-7 px-2 bg-bg-hover text-text-secondary text-[11px] rounded-md hover:bg-card-hover hover:text-text-primary transition-colors"
           >
             Control
           </a>
