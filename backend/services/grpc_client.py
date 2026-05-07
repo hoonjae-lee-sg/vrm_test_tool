@@ -39,6 +39,19 @@ def proto_to_dict(message):
         return MessageToDict(message, preserving_proto_field_name=True)
 
 
+def _coerce_int(d: dict, *keys: str):
+    """proto3 uint64 의 JSON string 직렬화 표준을 int 로 변환 — API_REQUIREMENTS §0.3 정수 규약 준수.
+    JS 안전 범위(2^53) 초과 가능성 있는 누적 카운터지만 frontend 사용 패턴(차트/표시)상 정수가 자연스러움.
+    """
+    if not isinstance(d, dict):
+        return d
+    for k in keys:
+        v = d.get(k)
+        if isinstance(v, str) and v.lstrip('-').isdigit():
+            d[k] = int(v)
+    return d
+
+
 class GRPCClientService:
     """
     gRPC 클라이언트 서비스 (싱글톤)
@@ -243,7 +256,12 @@ class GRPCClientService:
         response = self.fleet_stub.GetThroughput(request)
         if response.HasField("error"):
             raise Exception(f"Throughput error: {response.error.message}")
-        return proto_to_dict(response.payload)
+        d = proto_to_dict(response.payload)
+        # uint64 JSON string → int (사양 §0.3 정수 규약).
+        for p in d.get("points", []) or []:
+            _coerce_int(p, "frames_in", "frames_dropped")
+        _coerce_int(d.get("totals", {}) or {}, "frames_in", "frames_dropped")
+        return d
 
     # API_REQUIREMENTS §2.4 — 디스크 사용량.
     def get_storage_usage(self):
@@ -259,7 +277,14 @@ class GRPCClientService:
         response = self.fleet_stub.GetRecordingMetrics(request)
         if response.HasField("error"):
             raise Exception(f"RecordingMetrics error: {response.error.message}")
-        return proto_to_dict(response.payload)
+        d = proto_to_dict(response.payload)
+        # proto3 default 0 omit 보강 — 사양 §0.3 정수 키 명시적 노출.
+        d.setdefault("frames_in", 0)
+        d.setdefault("frames_dropped", 0)
+        d.setdefault("uptime_seconds", 0)
+        # uint64 JSON string → int.
+        _coerce_int(d, "uptime_seconds", "frames_in", "frames_dropped")
+        return d
 
     # ===== Events =====
     # API_REQUIREMENTS §2.3 보강 — server streaming. 호출자 (FastAPI SSE) 에서 yield.
@@ -329,6 +354,8 @@ class GRPCClientService:
             events_pb2.SEV_ERROR: "error",
         }
         events_out = []
+        # total 은 uint64 → 응답 시 int 변환.
+        total_int = int(response.payload.total) if response.payload.total else 0
         for ev in response.payload.events:
             meta = {}
             if ev.meta_json:
@@ -345,7 +372,7 @@ class GRPCClientService:
                 "message":      ev.message,
                 "meta":         meta,
             })
-        return {"events": events_out, "total": int(response.payload.total)}
+        return {"events": events_out, "total": total_int}
 
 
 def get_grpc_client() -> GRPCClientService:
