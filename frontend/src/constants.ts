@@ -115,3 +115,30 @@ export const SYNC_THRESHOLD_WARN_MS = 100;
 
 /** 녹화 보관 기간 기본값 (일) */
 export const DEFAULT_RETENTION_DAYS = 7;
+
+/* ────────────────── Event Clip (이벤트 클립) ──────────────────
+ * 값의 출처는 서버 상수임 — src/media/recording/recorder.cpp 상단
+ * (kClipBufferMaxFrames / kClipBufferMaxBytes / kEventClipMaxDurationSec).
+ * UI 는 이 값을 "안내와 경고"에만 사용하고 강제하지 않음. 실제 회수 주체는
+ * 서버 감독 루프의 check_event_clip_watchdog 임. */
+
+/** 이벤트 클립 최대 지속시간 (초) — 초과 시 서버가 force_stop_event_clip 으로 강제 회수 */
+export const EVENT_CLIP_MAX_DURATION_SEC = 600;
+
+/** 이벤트 클립 버퍼 프레임 수 상한 — 30fps × 600초 기준 */
+export const EVENT_CLIP_MAX_FRAMES = 18000;
+
+/** 이벤트 클립 버퍼 바이트 상한 (MB) */
+export const EVENT_CLIP_MAX_BYTES_MB = 512;
+
+/** 경과 시간이 상한의 이 비율을 넘으면 UI 경고 전환 */
+export const EVENT_CLIP_WARN_RATIO = 0.8;
+
+/** 이벤트 피드에 유지할 최대 항목 수 — 장시간 구독 시 메모리 무한 증가 방지 */
+export const EVENT_FEED_MAX_ITEMS = 300;
+
+/** 페이지 진입 시 미리 불러올 최근 이벤트 개수 (서버 상한 100) */
+export const EVENT_FEED_PRELOAD_LIMIT = 50;
+
+/** EventClipPage 녹화 목록 갱신 주기 (ms) */
+export const EVENT_CLIP_REFRESH_INTERVAL_MS = 5000;

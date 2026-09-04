@@ -44,7 +44,9 @@ export default function DriftBar({
   const isNegative = diffMs < 0;
 
   return (
-    <div className={`relative h-2 bg-bg-app rounded-sm ${className}`}>
+    /* min-w: 부모 그리드 컬럼이 좁아져도 막대 트랙이 0px 로 사라지지 않도록 하한을 둠.
+       (1024px 이하에서 per-camera drift 컬럼 width=0px 로 소멸하던 문제) */
+    <div className={`relative h-2 w-full min-w-[40px] bg-bg-app rounded-sm ${className}`}>
       {/* 0ms 기준선 */}
       <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-strong" />
       {/* drift 바 */}

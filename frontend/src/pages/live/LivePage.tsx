@@ -6,7 +6,7 @@
  * - 플로팅 녹화 목록 패널
  * - 공유 컴포넌트 (Modal, FloatingPanel, FormField) 활용
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useRecordings } from "@/hooks/useRecordings";
 import { useToast } from "@/hooks/useToast";
 import { startRecording, type StartRecordingParams } from "@/api/recording";
@@ -189,7 +189,7 @@ export default function LivePage() {
   }) => (
     <button
       onClick={() => setLayout(id)}
-      className={`h-7 px-2.5 text-[11px] font-mono font-semibold rounded transition-colors ${
+      className={`h-7 px-2.5 text-[11px] font-mono font-semibold rounded transition-colors whitespace-nowrap ${
         layout === id
           ? "bg-text-primary text-bg-app"
           : "text-text-muted hover:text-text-primary"
@@ -212,7 +212,7 @@ export default function LivePage() {
   }) => (
     <button
       onClick={() => setFilter(id)}
-      className={`flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
+      className={`flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-medium border transition-colors whitespace-nowrap ${
         filter === id
           ? "bg-text-primary text-bg-app border-text-primary"
           : "bg-bg-card text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary"
@@ -230,25 +230,32 @@ export default function LivePage() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] bg-bg-app">
-      {/* ── 헤더 바 ── */}
-      <div className="flex items-center gap-3 px-6 py-3 bg-bg-card border-b border-border">
-        <div>
-          <h1 className="text-[15px] font-semibold text-text-primary tracking-tight leading-none">Live grid</h1>
-          <div className="text-[11px] text-text-muted mt-1 tabular">
+    /* h-full — Layout <main> 이 뷰포트 높이를 이미 확정하므로 calc(100vh-56px) 대신
+       부모 높이를 그대로 따름. 모바일 상단 바가 생겨도 자동으로 맞춰짐 */
+    <div className="flex flex-col h-full min-h-0 bg-bg-app">
+      {/* ── 헤더 바 ──
+          flex-wrap: 좁은 폭에서 툴바가 한 줄에 다 들어가지 않으면 다음 줄로 접힘.
+          기존에는 nowrap 이라 scrollWidth 1162 / clientWidth 784 로 Add stream·
+          Start recording 버튼이 화면 밖으로 밀려 좁은 화면에서 스트림 추가 자체가 불가했음 */}
+      <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 py-3 bg-bg-card border-b border-border shrink-0">
+        <div className="shrink-0">
+          <h1 className="text-[15px] font-semibold text-text-primary tracking-tight leading-none whitespace-nowrap">Live grid</h1>
+          <div className="text-[11px] text-text-muted mt-1 tabular whitespace-nowrap">
             {streams.length} active stream{streams.length === 1 ? "" : "s"}
             {query && ` · ${visibleStreams.length} matching“${query}”`}
           </div>
         </div>
 
-        {/* 검색 */}
-        <div className="flex items-center gap-2 ml-6 px-3 h-8 bg-bg-app border border-border rounded-md w-72">
+        {/* 검색 — 고정 w-72 를 버리고 남는 폭을 흡수.
+            좁은 폭에서는 160px 하한(그 아래면 다음 줄로 접힘), xl 이상에서는 120px 까지
+            양보해 툴바 전체가 한 줄에 들어가게 함(툴바 콘텐츠 합이 1152px 를 넘기 때문) */}
+        <div className="flex items-center gap-2 md:ml-4 px-3 h-8 bg-bg-app border border-border rounded-md flex-1 min-w-[160px] xl:min-w-[120px] max-w-xs">
           <MagnifyingGlassIcon className="w-3.5 h-3.5 text-text-muted" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by recording ID…"
-            className="flex-1 bg-transparent border-none outline-none text-[12px] text-text-primary placeholder-text-muted"
+            className="flex-1 min-w-0 bg-transparent border-none outline-none text-[12px] text-text-primary placeholder-text-muted"
           />
           {query && (
             <button onClick={() => setQuery("")} className="text-text-muted hover:text-text-primary">
@@ -257,18 +264,17 @@ export default function LivePage() {
           )}
         </div>
 
-        {/* 필터 칩 */}
-        <div className="flex items-center gap-1.5 ml-2">
+        {/* 필터 칩 — 줄바꿈되어도 칩끼리는 붙어 있도록 자체 wrap 허용 */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <FilterChip id="all" label="All" count={recordings.length} />
           <FilterChip id="running" label="Continuous" count={Math.max(0, runningCount - eventCount)} />
           <FilterChip id="event" label="Event" count={eventCount} />
           <FilterChip id="issues" label="Issues" count={errorCount} />
         </div>
 
-        <div className="flex-1" />
-
-        {/* 레이아웃 토글 */}
-        <div className="flex items-center gap-1 px-1.5 h-8 bg-bg-app border border-border rounded-md">
+        {/* 레이아웃 토글 — 넓은 폭에서만 우측 정렬(ml-auto). flex-wrap 아래에서
+           빈 spacer div 는 줄을 통째로 차지해버리므로 spacer 대신 ml-auto 사용 */}
+        <div className="flex items-center gap-1 px-1.5 h-8 bg-bg-app border border-border rounded-md xl:ml-auto">
           <Squares2X2Icon className="w-3.5 h-3.5 text-text-muted ml-1" />
           <LayoutBtn id="auto" label="AUTO" />
           <LayoutBtn id="1x1" label="1×1" />
@@ -279,7 +285,7 @@ export default function LivePage() {
         {/* 포커스 토글 */}
         <button
           onClick={() => setFocusMode((f) => !f)}
-          className={`flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-md border transition-colors ${
+          className={`flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 ${
             focusMode
               ? "bg-text-primary text-bg-app border-text-primary"
               : "bg-bg-card text-text-primary border-border hover:bg-bg-hover"
@@ -295,7 +301,7 @@ export default function LivePage() {
             setViewRecId("");
             setViewModal(true);
           }}
-          className="flex items-center gap-1.5 h-8 px-3 bg-brand-soft text-brand text-[12px] font-medium rounded-md hover:bg-brand hover:text-white transition-colors"
+          className="flex items-center gap-1.5 h-8 px-3 bg-brand-soft text-brand text-[12px] font-medium rounded-md hover:bg-brand hover:text-white transition-colors whitespace-nowrap shrink-0"
         >
           <PlusIcon className="w-3.5 h-3.5" /> Add stream
         </button>
@@ -311,15 +317,17 @@ export default function LivePage() {
             });
             setAddModal(true);
           }}
-          className="flex items-center gap-1.5 h-8 px-3 bg-text-primary text-white text-[12px] font-medium rounded-md hover:bg-text-primary/90 transition-colors"
+          className="flex items-center gap-1.5 h-8 px-3 bg-text-primary text-white text-[12px] font-medium rounded-md hover:bg-text-primary/90 transition-colors whitespace-nowrap shrink-0"
         >
           <VideoCameraIcon className="w-3.5 h-3.5" /> Start recording
         </button>
       </div>
 
-      {/* ── 그리드 + 우측 상세 패널 ── */}
-      <div className="flex-1 flex overflow-hidden">
-      <div className={`${focusMode || streams.length === 0 ? "flex-1" : "flex-1"} p-3 overflow-hidden`}>
+      {/* ── 그리드 + 우측 상세 패널 ──
+          min-h-0/min-w-0: flex 아이템 기본 min-size(auto) 때문에 내부 그리드가
+          부모를 밀어내 가로 넘침을 만드는 것을 차단 */}
+      <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+      <div className="flex-1 min-w-0 p-3 overflow-hidden">
         {streams.length === 0 ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-text-muted">
             <VideoCameraIcon className="w-10 h-10 text-text-muted opacity-40" />
@@ -340,12 +348,15 @@ export default function LivePage() {
             <button onClick={() => setQuery("")} className="ml-2 text-brand hover:underline">Clear</button>
           </div>
         ) : (
+          /* 그리드 열/행은 스트림 개수로 계산하지만, sm 미만에서는 폭이 좁아
+             2~3열이 셀을 180px 이하로 만들므로 강제로 1열 + 최소 높이 160px 스택으로 전환.
+             계산값은 CSS 변수로 넘기고 sm 이상에서만 적용해 로직 변경 없이 반응형 확보 */
           <div
-            className="w-full h-full grid gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, 1fr)`,
-              gridTemplateRows: `repeat(${rows}, 1fr)`,
-            }}
+            className="w-full h-full grid gap-2 grid-cols-1 auto-rows-[minmax(160px,1fr)] overflow-y-auto
+              sm:overflow-visible sm:auto-rows-auto
+              sm:[grid-template-columns:repeat(var(--live-cols),minmax(0,1fr))]
+              sm:[grid-template-rows:repeat(var(--live-rows),minmax(0,1fr))]"
+            style={{ "--live-cols": cols, "--live-rows": rows } as CSSProperties}
           >
             {visibleStreams.map((stream) => (
               <div
@@ -367,7 +378,7 @@ export default function LivePage() {
 
       {/* ── 우측 상세 패널 — focusMode가 아닐 때만 ── */}
       {!focusMode && streams.length > 0 && (
-        <aside className="w-72 flex-shrink-0 bg-bg-sidebar border-l border-border overflow-y-auto">
+        <aside className="hidden lg:block lg:w-64 xl:w-72 flex-shrink-0 bg-bg-sidebar border-l border-border overflow-y-auto">
           {selectedRec ? (
             <>
               {/* 카메라 정보 */}

@@ -28,6 +28,7 @@ import {
   PlusIcon,
   XMarkIcon,
   ArrowPathIcon,
+  StopIcon,
 } from "@heroicons/react/24/outline";
 
 /* ────────────────── 프리셋 관련 유틸 ────────────────── */
@@ -203,7 +204,6 @@ export default function DashboardPage() {
   };
 
   /* 통계 */
-  const total = recordings.length;
   const running = recordings.filter((r: Recording) => r.state === "RUNNING").length;
   const errors = recordings.filter((r: Recording) => r.state === "ERROR").length;
   const stopped = recordings.filter((r: Recording) => r.state === "STOPPED").length;
@@ -307,9 +307,9 @@ export default function DashboardPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <div className="px-6 py-5 max-w-[1400px] mx-auto">
+    <div className="px-4 md:px-6 py-5 max-w-[1400px] mx-auto">
       {/* ── 헤더 ── */}
-      <div className="flex items-end justify-between mb-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
           <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mb-1">Operations</div>
           <h1 className="text-[24px] leading-tight font-semibold font-display text-text-primary tracking-tight">Camera fleet</h1>
@@ -327,7 +327,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI 카드 — 4열 + sparkline ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
         <KpiCard
           label="Cameras online"
           value={formatNumber(kpi.camerasOnline)}
@@ -401,7 +401,7 @@ export default function DashboardPage() {
               <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border" />
             )}
           </div>
-          <div className="grid grid-cols-3 gap-3 text-[11px] pt-3 border-t border-border-subtle">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] pt-3 border-t border-border-subtle">
             <div>
               <div className="text-text-muted mb-0.5">Frames in</div>
               <div className="font-mono font-semibold text-text-primary tabular">
@@ -485,7 +485,11 @@ export default function DashboardPage() {
           action={{ label: "녹화 시작", onClick: () => setModalOpen(true) }}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        /* 좌측 사이드바 폭을 모르는 뷰포트 브레이크포인트 대신 컨테이너 폭 기준 auto-fill */
+        <div
+          className="grid gap-3"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
+        >
           {sortedRecordings.map((rec: Recording, i: number) => (
             <div
               key={rec.recording_id}
@@ -502,6 +506,7 @@ export default function DashboardPage() {
               recording={rec}
               showToast={showToast}
               refresh={refresh}
+              onStop={setStopTarget}
               onSnapshot={async (id) => {
                 try {
                   const res = await takeSnapshot(id);
@@ -583,7 +588,7 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-[60]" onClick={() => setDrawerOpen(false)}>
           <div className="absolute inset-0 bg-black/30" />
           <div
-            className="absolute right-0 top-0 h-full w-80 bg-bg-card border-l border-border p-4 overflow-y-auto shadow-card-lg"
+            className="absolute right-0 top-0 h-full w-full max-w-xs sm:max-w-sm bg-bg-card border-l border-border p-4 overflow-y-auto shadow-card-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -685,10 +690,10 @@ function KpiCard({
       <div className="text-[11px] text-text-muted mb-2">{label}</div>
       <div className="flex items-end justify-between gap-2">
         <div className="flex items-baseline gap-1.5 min-w-0">
-          <span className="text-[28px] leading-none font-semibold tracking-tight tabular text-text-primary">{value}</span>
+          <span className="text-[28px] leading-none font-semibold tracking-tight tabular text-text-primary truncate">{value}</span>
           {unit && <span className="text-[12px] text-text-muted font-medium">{unit}</span>}
         </div>
-        <Sparkline data={spark} color={color} width={72} height={28} />
+        <span className="shrink-0"><Sparkline data={spark} color={color} width={72} height={28} /></span>
       </div>
     </div>
   );
@@ -698,17 +703,23 @@ function KpiCard({
 function CameraCard({
   recording,
   onSnapshot,
+  onStop,
   showToast,
   refresh,
 }: {
   recording: Recording;
   onSnapshot: (id: string) => void;
+  /** 중지 확인 다이얼로그 열기 — 페이지의 setStopTarget 을 그대로 전달받음.
+   *  기존에 stopTarget/ConfirmDialog/stopRecording 은 구현돼 있었으나 이를 여는
+   *  호출부가 어디에도 없어 죽은 코드였음(대시보드에서 녹화를 멈출 방법이 없었음). */
+  onStop: (id: string) => void;
   showToast: (message: string, type: "success" | "error" | "info") => void;
   refresh: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   /* mpegts.js 플레이어 인스턴스 ref — destroy/play 호출용 */
-  const playerRef = useRef<mpegts.MSEPlayer | null>(null);
+  /* createPlayer() 는 MSEPlayer|NativePlayer 합집합(Player)을 반환하므로 ref 도 상위 타입으로 선언 */
+  const playerRef = useRef<mpegts.Player | null>(null);
   const [snapping, setSnapping] = useState(false);
   const [streamStatus, setStreamStatus] = useState<string>("");
   /** 녹화 재시작 로딩 상태 */
@@ -911,35 +922,45 @@ function CameraCard({
         </div>
 
         {/* 액션 버튼 */}
-        <div className="flex gap-1.5 pt-2 mt-1 border-t border-border-subtle">
+        {/* flex-wrap + 최소폭: 카드 폭이 좁아지면 버튼이 다음 줄로 접히고,
+            nowrap 라벨이 버튼 밖으로 새는 것을 막음 */}
+        <div className="flex flex-wrap gap-1.5 pt-2 mt-1 border-t border-border-subtle">
           {/* RUNNING 상태 전용 버튼 — Live View, Snapshot */}
           {state === "RUNNING" && (
             <>
               <a
                 href={`/live?id=${recId}`}
-                className="flex-1 inline-flex items-center justify-center h-7 px-2 bg-brand-soft text-brand text-[11px] font-medium rounded-md hover:bg-brand hover:text-white transition-colors"
+                className="flex-1 min-w-[60px] whitespace-nowrap inline-flex items-center justify-center h-7 px-2 bg-brand-soft text-brand text-[11px] font-medium rounded-md hover:bg-brand hover:text-white transition-colors"
               >
                 Live
               </a>
               <button
                 onClick={handleSnapshot}
                 disabled={snapping}
-                className="flex-1 inline-flex items-center justify-center gap-1 h-7 px-2 bg-bg-hover text-text-secondary text-[11px] rounded-md hover:bg-card-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                className="flex-1 min-w-[60px] whitespace-nowrap inline-flex items-center justify-center gap-1 h-7 px-2 bg-bg-hover text-text-secondary text-[11px] rounded-md hover:bg-card-hover hover:text-text-primary transition-colors disabled:opacity-50"
               >
                 {snapping ? <><CameraIcon className="w-3.5 h-3.5 animate-pulse" />…</> : <><CameraIcon className="w-3.5 h-3.5" /> Snap</>}
+              </button>
+              {/* 녹화 중지 — 실제 중지는 페이지의 ConfirmDialog 확인 후 수행됨(오조작 방지) */}
+              <button
+                onClick={() => onStop(recId)}
+                title="녹화 중지"
+                className="flex-1 min-w-[60px] whitespace-nowrap inline-flex items-center justify-center gap-1 h-7 px-2 bg-status-error/10 text-status-error text-[11px] font-medium rounded-md hover:bg-status-error hover:text-white transition-colors"
+              >
+                <StopIcon className="w-3.5 h-3.5" /> Stop
               </button>
             </>
           )}
           {/* STOPPED/ERROR 상태 전용 버튼 — 재시작 */}
           {(state === "STOPPED" || state === 4 || state === "ERROR" || state === 5) && (
-            <Button variant="primary" size="sm" isLoading={isRestarting} onClick={handleRestart} className="flex-1">
+            <Button variant="primary" size="sm" isLoading={isRestarting} onClick={handleRestart} className="flex-1 min-w-[72px] whitespace-nowrap">
               <ArrowPathIcon className="w-3.5 h-3.5" /> Restart
             </Button>
           )}
           <a
             href="/tester"
             onClick={() => sessionStorage.setItem("target_id", recId)}
-            className="flex-1 inline-flex items-center justify-center h-7 px-2 bg-bg-hover text-text-secondary text-[11px] rounded-md hover:bg-card-hover hover:text-text-primary transition-colors"
+            className="flex-1 min-w-[60px] whitespace-nowrap inline-flex items-center justify-center h-7 px-2 bg-bg-hover text-text-secondary text-[11px] rounded-md hover:bg-card-hover hover:text-text-primary transition-colors"
           >
             Control
           </a>

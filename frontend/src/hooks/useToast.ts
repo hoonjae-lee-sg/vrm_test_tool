@@ -8,7 +8,7 @@ export function useToast() {
     message: string;
     type: "success" | "error" | "info";
   } | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const showToast = useCallback(
     (message: string, type: "success" | "error" | "info" = "info", duration?: number) => {

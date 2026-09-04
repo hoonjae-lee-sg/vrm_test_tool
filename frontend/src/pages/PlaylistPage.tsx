@@ -253,7 +253,6 @@ export default function PlaylistPage() {
     canvas.width = CANVAS_WIDTH;
     canvas.height = TOTAL_HEIGHT;
 
-    const visibleHeight = scrollArea.clientHeight;
     const scrollOffset = scrollOffsetRef.current;
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, TOTAL_HEIGHT);
@@ -518,10 +517,14 @@ export default function PlaylistPage() {
   const dateStr = currentDate.toISOString().split("T")[0];
 
   return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
-      {/* ── 메인: 3x3 비디오 그리드 ── */}
-      <div className="flex-1 p-2 overflow-hidden">
-        <div className="grid grid-cols-3 grid-rows-3 gap-1 h-full">
+    /* 좌(3x3 월) + 우(288px 타임바) 고정 2단이 1024px 이하에서 셀을 소멸시켰으므로,
+       lg 미만에서는 타임바를 그리드 아래로 세로 스택하고 그리드 열 수도 함께 줄임 */
+    <div className="flex flex-col lg:flex-row h-auto lg:h-full lg:min-h-0 lg:overflow-hidden">
+      {/* ── 메인: 비디오 그리드 (lg 이상 3x3) ── */}
+      <div className="flex-1 min-w-0 p-2 lg:overflow-hidden">
+        {/* auto-rows minmax: 세로 스택 구간에서 h-full 이 0 이 되는 것을 막고
+            셀 최소 높이를 보장함. lg 이상에서만 3x3 + h-full 로 화면을 채움 */}
+        <div className="grid gap-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:grid-rows-3 auto-rows-[minmax(150px,1fr)] lg:h-full">
           {/* 비디오 그리드 셀 — 라이트 카드 */}
           {Array.from({ length: NUM_CHANNELS }, (_, i) => (
             <div key={i} className="relative bg-black rounded-md overflow-hidden border border-border">
@@ -586,7 +589,7 @@ export default function PlaylistPage() {
       </div>
 
       {/* ── 우측: 날짜 네비게이터 + 타임바 — Studio 라이트 사이드바 ── */}
-      <div className="w-72 flex-shrink-0 bg-bg-sidebar border-l border-border flex flex-col">
+      <div className="w-full lg:w-72 flex-shrink-0 bg-bg-sidebar border-t lg:border-t-0 lg:border-l border-border flex flex-col">
         {/* 날짜 네비게이터 */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
           <button
@@ -624,7 +627,7 @@ export default function PlaylistPage() {
         </div>
 
         {/* 타임바 캔버스 */}
-        <div ref={scrollAreaRef} className="flex-1 overflow-hidden relative">
+        <div ref={scrollAreaRef} className="h-64 lg:h-auto lg:flex-1 overflow-auto lg:overflow-hidden relative">
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}

@@ -4,7 +4,7 @@
  * - 탭 가시성 변경 시 일시정지/재개 처리
  * - WebSocket MPEG-TS 라이브 스트림 전용
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import mpegts from "mpegts.js";
 import type { MpegtsPlayer, Id3RawPayload } from "@/types/media";
 import {
@@ -224,7 +224,8 @@ export function useMpegtsPlayer({
           const end = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
           videoRef.current.currentTime = end - 0.2;
         }
-        playerRef.current?.play().catch(() => {});
+        /* play() 는 구현체에 따라 void 또는 Promise 를 반환 — Promise.resolve 로 감싸 통일 후 거부 무시 */
+        void Promise.resolve(playerRef.current?.play()).catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);

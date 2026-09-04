@@ -259,9 +259,12 @@ export default function MultiSnapshotPage() {
   const activeItem = history.find((h) => h.timeKey === activeTimeKey);
 
   return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+    /* 3단 고정(256+240+본문)이 1024px 이하에서 본문을 288px 까지 밀어내 썸네일이
+       68x38px 로 소멸했으므로, lg 미만에서는 두 사이드바를 본문 위로 세로 스택함.
+       lg 이상에서만 기존 3단 + 내부 스크롤 구조를 유지 */
+    <div className="flex flex-col lg:flex-row h-auto lg:h-full lg:min-h-0 lg:overflow-hidden">
       {/* ── 좌측: 채널 선택 — Studio 라이트 사이드바 ── */}
-      <div className="w-64 flex-shrink-0 bg-bg-sidebar border-r border-border flex flex-col">
+      <div className="w-full lg:w-60 xl:w-64 flex-shrink-0 bg-bg-sidebar border-b lg:border-b-0 lg:border-r border-border flex flex-col">
         <div className="p-4 border-b border-border-subtle">
           <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
             Step 1
@@ -401,7 +404,7 @@ export default function MultiSnapshotPage() {
       </div>
 
       {/* ── 중앙: 히스토리 목록 — 라이트 패널 ── */}
-      <div className="w-60 flex-shrink-0 bg-bg-sidebar border-r border-border flex flex-col">
+      <div className="w-full lg:w-52 xl:w-60 flex-shrink-0 bg-bg-sidebar border-b lg:border-b-0 lg:border-r border-border flex flex-col">
         <div className="px-4 py-3 border-b border-border-subtle">
           <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
             Step 2
@@ -410,7 +413,7 @@ export default function MultiSnapshotPage() {
             Capture history
           </h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 max-h-48 lg:max-h-none overflow-y-auto p-2 space-y-1">
           {history.length === 0 ? (
             <p className="text-xs text-text-muted p-2">캡처 기록이 없습니다.</p>
           ) : (
@@ -442,10 +445,10 @@ export default function MultiSnapshotPage() {
       </div>
 
       {/* ── 우측: 스냅샷 그리드 뷰 ── */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 min-w-0 lg:overflow-y-auto px-4 md:px-6 py-5">
         {activeItem ? (
           <>
-            <div className="mb-5 flex items-baseline gap-3">
+            <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h2 className="text-[20px] font-semibold font-display text-text-primary tracking-tight">
                 {activeItem.displayTime}
               </h2>
@@ -453,7 +456,7 @@ export default function MultiSnapshotPage() {
                 {activeItem.camCount} channels captured
               </span>
               {activeItem.masterId && (
-                <span className="ml-auto text-[11px] text-text-muted tabular">
+                <span className="sm:ml-auto text-[11px] text-text-muted tabular truncate max-w-full">
                   master · <span className="font-mono text-text-secondary">{activeItem.masterId}</span>
                 </span>
               )}
@@ -466,7 +469,13 @@ export default function MultiSnapshotPage() {
                 ))}
               </div>
             )}
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {/* 뷰포트가 아니라 **컨테이너 폭** 기준으로 열 수를 정함.
+                lg:grid-cols-3 같은 뷰포트 기준은 좌측 496px 를 모르기 때문에
+                1024px 에서 3열 → 셀 68px 로 무너졌음 */}
+            <div
+              className="grid gap-3"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
+            >
               {Object.entries(activeItem.data).map(([rid, snap]) => (
                 /* 스냅샷 이미지 카드 — 라이트 카드 + 동기화 실패 시 에러 보더 + master에 강조 보더 */
                 <div
@@ -522,7 +531,7 @@ export default function MultiSnapshotPage() {
               const maxAbs = Math.max(10, ...rows.map((r) => Math.abs(r.offset)));
               return (
                 <div className="mt-6 bg-card border border-border rounded-md overflow-hidden">
-                  <div className="px-4 py-3 border-b border-border-subtle flex items-baseline justify-between">
+                  <div className="px-4 py-3 border-b border-border-subtle flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <h3 className="text-[13px] font-semibold text-text-primary tracking-tight">
                       Per-camera drift
                     </h3>
@@ -534,7 +543,9 @@ export default function MultiSnapshotPage() {
                     {rows.map((r) => (
                       <div
                         key={r.rid}
-                        className="grid grid-cols-[140px_1fr_60px_70px] gap-3 items-center text-[12px] py-1"
+                        /* 고정 140/60/70px + 1fr 조합은 좁은 폭에서 DriftBar 컬럼을 0px 로
+                           소멸시켰음. 전 컬럼을 minmax 로 바꿔 막대가 최소 56px 를 확보하게 함 */
+                        className="grid grid-cols-[minmax(0,1.8fr)_minmax(48px,1.2fr)_auto_auto] gap-2 sm:gap-3 items-center text-[12px] py-1"
                       >
                         <div className="font-mono text-text-primary truncate flex items-center gap-1.5">
                           {r.rid}
@@ -549,11 +560,11 @@ export default function MultiSnapshotPage() {
                           maxScaleMs={maxAbs * 1.1}
                           isMaster={r.isMaster}
                         />
-                        <div className="text-right font-mono tabular text-text-secondary">
+                        <div className="text-right font-mono tabular text-text-secondary whitespace-nowrap">
                           {r.isMaster ? "0" : (r.offset > 0 ? "+" : "")}
                           {r.offset}<span className="text-text-muted ml-0.5">ms</span>
                         </div>
-                        <div className={`text-center text-[10px] font-semibold uppercase tracking-wider ${
+                        <div className={`text-center text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${
                           !r.synced ? "text-status-error" : Math.abs(r.offset) <= 10 ? "text-status-running" : Math.abs(r.offset) <= 30 ? "text-brand" : "text-status-pending"
                         }`}>
                           {!r.synced ? "no sync" : Math.abs(r.offset) <= 10 ? "perfect" : Math.abs(r.offset) <= 30 ? "good" : "warn"}
@@ -562,7 +573,7 @@ export default function MultiSnapshotPage() {
                     ))}
                   </div>
                   {/* Session metadata 푸터 */}
-                  <div className="px-4 py-2 border-t border-border-subtle bg-bg-subtle text-[10px] text-text-muted font-mono tabular flex justify-between">
+                  <div className="px-4 py-2 border-t border-border-subtle bg-bg-subtle text-[10px] text-text-muted font-mono tabular flex flex-wrap justify-between gap-x-3">
                     <span className="truncate">
                       /sessions/{activeItem.timeKey}/
                     </span>

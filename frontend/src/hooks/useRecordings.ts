@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchRecordings } from "@/api/recording";
+import { extractApiError } from "@/pages/tester/lib/validation";
 import type { Recording } from "@/types/recording";
 
 /**
@@ -19,9 +20,11 @@ export function useRecordings(intervalMs: number = 3000) {
       setRecordings(data);
       setError(null);
     } catch (err: unknown) {
-      /* 에러 객체에서 메시지 추출 — Error 인스턴스 여부 확인 */
-      const message = err instanceof Error ? err.message : "녹화 목록 조회 실패";
-      setError(message);
+      /* axios 응답 본문의 detail 을 우선 노출.
+         err.message 만 쓰면 "Request failed with status code 503" 만 남아
+         "VRM gRPC(50000) 연결 거부" 같은 실제 사유가 사라짐.
+         (소비 측이 없던 필드라 문자열 내용 변경의 파급은 없음) */
+      setError(extractApiError(err));
     } finally {
       setLoading(false);
     }

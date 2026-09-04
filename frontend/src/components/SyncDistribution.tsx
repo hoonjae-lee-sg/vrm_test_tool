@@ -70,7 +70,7 @@ export default function SyncDistribution({ values }: SyncDistributionProps) {
   return (
     <div className="bg-card border border-border rounded-md p-4">
       {/* 요약 라벨 */}
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
         <h3 className="text-[12px] font-semibold text-text-primary tracking-tight">
           Sync grade distribution
         </h3>
@@ -91,13 +91,15 @@ export default function SyncDistribution({ values }: SyncDistributionProps) {
         ))}
       </div>
 
-      {/* 4-stat */}
-      <div className="grid grid-cols-4 gap-2">
+      {/* 4-stat — 뷰포트가 아니라 **카드 자신의 폭** 기준으로 접힘.
+          컬럼 하한 72px 를 두어 "100.0%" 같은 최장 문자열이 셀 밖으로 새지 않게 함
+          (뷰포트 기준 grid-cols-4 는 좌측 사이드바 폭을 몰라 1024px 에서 28px 셀을 만들었음) */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))" }}>
         {buckets.map((b) => (
           <div key={b.key} className="border border-border-subtle rounded-md px-2 py-2">
             <div className="flex items-center gap-1.5 mb-1">
               <span className={`w-1.5 h-1.5 rounded-full ${b.color}`} />
-              <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
+              <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold truncate">
                 {b.label}
               </span>
             </div>

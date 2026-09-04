@@ -12,7 +12,7 @@ import {
   getSyncFrames,
   getSnapshotImageUrl,
 } from "@/api/snapshot_receiver";
-import type { CameraFrame, SyncGroup, SyncBadge } from "@/types/recording";
+import type { SyncGroup, SyncBadge } from "@/types/recording";
 import EmptyState from "@/components/EmptyState";
 import DriftHistogram from "@/components/DriftHistogram";
 import SyncDistribution from "@/components/SyncDistribution";
@@ -107,9 +107,11 @@ export default function SyncViewerPage() {
   const availableHours = selectedDate ? dates[selectedDate] || [] : [];
 
   return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+    /* 좌측 288px 고정이 1024px 이하에서 본문 그리드를 짓눌렀으므로,
+       lg 미만에서는 사이드바를 본문 위로 세로 스택하고 lg 이상에서만 2단 유지 */
+    <div className="flex flex-col lg:flex-row h-auto lg:h-full lg:min-h-0 lg:overflow-hidden">
       {/* ══════════ 좌측: 날짜/시간 선택 + 프레임 타임라인 ══════════ */}
-      <aside className="w-72 flex-shrink-0 bg-bg-sidebar border-r border-border flex flex-col">
+      <aside className="w-full lg:w-64 xl:w-72 flex-shrink-0 bg-bg-sidebar border-b lg:border-b-0 lg:border-r border-border flex flex-col">
         {/* 헤더 */}
         <div className="px-4 py-4 border-b border-border-subtle">
           <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
@@ -168,7 +170,7 @@ export default function SyncViewerPage() {
         </div>
 
         {/* 프레임 타임라인 */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 max-h-64 lg:max-h-none overflow-y-auto p-2 space-y-1">
           {loading ? (
             <p className="text-[12px] text-text-muted px-2 py-3">로딩 중…</p>
           ) : syncGroups.length === 0 ? (
@@ -246,11 +248,11 @@ export default function SyncViewerPage() {
       </aside>
 
       {/* ══════════ 우측: 이미지 그리드 + 동기화 정보 ══════════ */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 min-w-0 lg:overflow-y-auto px-4 md:px-6 py-5">
         {selectedGroup ? (
           <>
             {/* Sync grade 분포 + drift histogram */}
-            <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
               <SyncDistribution values={syncGroups.map((g) => g.max_diff_ms)} />
               <div className="bg-card border border-border rounded-md p-4">
                 <div className="flex items-baseline justify-between mb-3">
@@ -266,7 +268,7 @@ export default function SyncViewerPage() {
             </div>
 
             {/* 상단 요약 바 */}
-            <div className="flex items-end justify-between mb-5">
+            <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
                   Frame
@@ -307,7 +309,12 @@ export default function SyncViewerPage() {
             </div>
 
             {/* 이미지 그리드 */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {/* 뷰포트가 아닌 컨테이너 폭 기준 — 좌측 288px 를 모르는 lg:grid-cols-3 은
+                1024px 에서 셀을 소멸시켰음 */}
+            <div
+              className="grid gap-3"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+            >
               {cameras.map((camId) => {
                 const frame = selectedGroup.cameras[camId];
                 const hasMissing = !frame;
@@ -382,7 +389,9 @@ export default function SyncViewerPage() {
                   Per-camera offsets
                 </h3>
               </div>
-              <table className="w-full text-[12px]">
+              {/* 5컬럼 테이블은 좁은 폭에서 줄바꿈으로 무너지므로 최소폭 + 가로 스크롤 */}
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-[12px]">
                 <thead>
                   <tr className="bg-bg-subtle border-b border-border-subtle">
                     <th className="px-3 py-2 text-left text-text-muted font-medium uppercase tracking-wider text-[10px]">
@@ -458,6 +467,7 @@ export default function SyncViewerPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           </>
         ) : Object.keys(dates).length === 0 ? (

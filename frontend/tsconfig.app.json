@@ -30,5 +30,13 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+
+  /*
+   * 타입 검사 제외 대상 — 모두 .gitignore 된 디자인 도구 산출물/사본이며
+   * 애플리케이션 코드에서 import 되지 않음(참조 0건 확인).
+   * tsconfig include 가 "src" 전체라 방치하면 추적 대상이 아닌 파일의 에러로
+   * `npm run build`(tsc -b) 가 실패하므로 명시적으로 배제.
+   */
+  "exclude": ["src/frontend-src", "src/redesign", "src/design-canvas.jsx"]
 }
