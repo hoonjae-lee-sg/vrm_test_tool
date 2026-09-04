@@ -7,6 +7,7 @@ import LivePage from "@/pages/LivePage";
 import PlaylistPage from "@/pages/PlaylistPage";
 import MultiSnapshotPage from "@/pages/MultiSnapshotPage";
 import SyncViewerPage from "@/pages/SyncViewerPage";
+import EventClipPage from "@/pages/EventClipPage";
 
 /**
  * 앱 루트 — 라우팅 설정
@@ -24,6 +25,8 @@ export default function App() {
           <Route path="/playlist" element={<ErrorBoundary><PlaylistPage /></ErrorBoundary>} />
           <Route path="/live" element={<ErrorBoundary><LivePage /></ErrorBoundary>} />
           <Route path="/sync-viewer" element={<ErrorBoundary><SyncViewerPage /></ErrorBoundary>} />
+          {/* 이벤트 클립 테스트 — 이벤트 발생/종료 + SSE 피드 대조 */}
+          <Route path="/event-clip" element={<ErrorBoundary><EventClipPage /></ErrorBoundary>} />
         </Route>
       </Routes>
     </BrowserRouter>
