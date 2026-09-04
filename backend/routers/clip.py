@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.schemas.models import EventClipRequest, SimpleClipRequest
 from backend.services.grpc_client import GRPCClientService, get_grpc_client
+from backend.services.grpc_errors import to_http_exception
 
 router = APIRouter(prefix="/api/clip", tags=["clip"])
 
@@ -30,7 +31,9 @@ async def start_event_clip(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.post("/event/stop")
@@ -51,7 +54,9 @@ async def stop_event_clip(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.post("/simple")
@@ -73,4 +78,6 @@ async def create_simple_clip(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)

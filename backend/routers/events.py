@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from backend.services.grpc_client import GRPCClientService, get_grpc_client
+from backend.services.grpc_errors import to_http_exception
 from video_recorder.events import events_pb2
 
 router = APIRouter(prefix="/api", tags=["events"])
@@ -77,7 +78,9 @@ async def get_recent_events(
             ),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.get("/events/stream")

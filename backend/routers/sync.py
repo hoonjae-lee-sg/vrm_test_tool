@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from backend.services.grpc_errors import to_http_exception
 
 # snapshot_receiver 의 storage_path 공유 (env / 기본값 동일).
 from snapshot_receiver.config import config as sr_config
@@ -300,7 +301,9 @@ async def get_sync_sessions():
         _cache_set(cache_key, result)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.get("/sync/distribution")
@@ -337,4 +340,6 @@ async def get_sync_distribution(
         _cache_set(cache_key, result)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)

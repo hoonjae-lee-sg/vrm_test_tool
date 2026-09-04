@@ -7,6 +7,7 @@ from functools import partial
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.services.grpc_client import GRPCClientService, get_grpc_client
+from backend.services.grpc_errors import to_http_exception
 
 router = APIRouter(prefix="/api", tags=["metrics"])
 
@@ -18,7 +19,9 @@ async def get_fleet_metrics(client: GRPCClientService = Depends(get_grpc_client)
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, client.get_fleet_metrics)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.get("/metrics/throughput")
@@ -44,7 +47,9 @@ async def get_throughput(
             "totals": result.get("totals", {"frames_in": 0, "frames_dropped": 0, "drop_rate": 0.0}),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.get("/storage/usage")
@@ -67,7 +72,9 @@ async def get_storage_usage(client: GRPCClientService = Depends(get_grpc_client)
             "oldest_segment_at": result.get("oldest_segment_at"),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.get("/recordings/{recording_id}/metrics")
@@ -83,7 +90,6 @@ async def get_recording_metrics(
             partial(client.get_recording_metrics, recording_id=recording_id),
         )
     except Exception as e:
-        msg = str(e)
-        if "not found" in msg.lower() or "NOT_FOUND" in msg:
-            raise HTTPException(status_code=404, detail=msg)
-        raise HTTPException(status_code=500, detail=msg)
+        # 기존에는 str(e) 에 "not found" 가 들어있는지 문자열로 판별했으나,
+        # gRPC 상태 코드를 직접 보는 공통 변환기로 대체(오탐·누락 없음).
+        raise to_http_exception(e)

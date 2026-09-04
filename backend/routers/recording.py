@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.schemas.models import RecordStartRequest, RecordStopRequest
 from backend.services.grpc_client import GRPCClientService, get_grpc_client
+from backend.services.grpc_errors import to_http_exception
 
 router = APIRouter(prefix="/api", tags=["recording"])
 
@@ -20,7 +21,9 @@ async def list_recordings(client: GRPCClientService = Depends(get_grpc_client)):
         recordings = await loop.run_in_executor(None, client.list_recordings)
         return recordings
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.post("/start")
@@ -53,7 +56,9 @@ async def start_recording(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.post("/stop")
@@ -74,7 +79,9 @@ async def stop_recording(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.post("/restart")
@@ -95,7 +102,9 @@ async def restart_recording(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
 
 
 @router.get("/recordings/{recording_id}/status")
@@ -116,4 +125,6 @@ async def get_recording_status(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # gRPC 거절(ALREADY_EXISTS/INVALID_ARGUMENT 등)을 500 으로 뭉개지 않고
+        # 대응 HTTP 상태로 변환. detail 에는 서버 사유 문자열만 담음.
+        raise to_http_exception(e)
