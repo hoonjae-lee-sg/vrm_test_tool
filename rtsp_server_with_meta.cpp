@@ -5,6 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/videoio.hpp>
 #include <chrono>
+#include "misb/misb.hpp"
 
 // Global variables for metadata appsrc
 GstElement *meta_appsrc = nullptr;
@@ -127,30 +128,14 @@ int main(int argc, char *argv[])
             rtph264_writer.write(frame);
 
             // Write Metadata (every frame or periodically)
-            // JSON format: {"bbox": [x, y, x2, y2]}
-            int x = (frame_count * 5) % (w - 100);
-            int y = (frame_count * 5) % (h - 100);
-            std::string json_meta = "{\"bbox\": [" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(x+100) + ", " + std::to_string(y+100) + "]}";
-            
-            // Construct KLV Packet (SMPTE 336M)
-            // Universal Label (16 bytes) - Example: UAS Datalink Local Set
-            uint8_t klv_key[] = {0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 
-                                 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00};
-            
-            size_t value_len = json_meta.size();
-            std::vector<uint8_t> klv_packet;
-            klv_packet.insert(klv_packet.end(), std::begin(klv_key), std::end(klv_key));
-            
-            // BER Length Encoding
-            if (value_len < 128) {
-                klv_packet.push_back((uint8_t)value_len);
-            } else {
-                // Simplified for test: assuming length < 255
-                klv_packet.push_back(0x81);
-                klv_packet.push_back((uint8_t)value_len);
-            }
-            
-            klv_packet.insert(klv_packet.end(), json_meta.begin(), json_meta.end());
+            // Emit a valid ST 0601 UAS Datalink Local Set: tag 2 (Precision Time Stamp,
+            // Unix microseconds) is the field the VRM sync/drift metrics key on, plus
+            // the version (tag 65) and the ST 0601 checksum (tag 1) that any STANAG 4609
+            // consumer verifies. misb::st0601::Builder adds tags 2, 65 and 1 for us.
+            uint64_t unix_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            misb::st0601::Builder meta_builder(unix_us);
+            std::vector<uint8_t> klv_packet = meta_builder.finish();
 
             GstBuffer *buffer = gst_buffer_new_allocate(NULL, klv_packet.size(), NULL);
             gst_buffer_fill(buffer, 0, klv_packet.data(), klv_packet.size());
